@@ -1,0 +1,51 @@
+version: "3.9"
+
+services:
+  # ─── PostgreSQL + PostGIS ─────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: dbm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dbm
+      POSTGRES_PASSWORD: dbm_secret
+      POSTGRES_DB: dbm_portal
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbm -d dbm_portal"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── LocalStack (S3 mock for local dev) ───────────────────
+  localstack:
+    image: localstack/localstack:3.4
+    container_name: dbm-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: s3
+      DEFAULT_REGION: us-east-1
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - ./init-s3.sh:/etc/localstack/init/ready.d/init-s3.sh
+
+  # ─── Redis (for session store + future notification queue) ─
+  redis:
+    image: redis:7-alpine
+    container_name: dbm-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:
+  localstack_data:

@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -X POST http://localhost:4000/auth/session -H 'Content-Type: application/json' -d '{\"firebaseIdToken\": \"{\\\\\"email\\\\\":\\\\\"owner@test.com\\\\\",\\\\\"uid\\\\\":\\\\\"test-owner-uid\\\\\"}\"}')"
+    ]
+  }
+}

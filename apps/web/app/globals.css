@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* DBM Blueprint grid background */
+.bg-blueprint {
+  background-color: #F0F4F8;
+  background-image:
+    linear-gradient(rgba(30, 39, 97, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 39, 97, 0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+}

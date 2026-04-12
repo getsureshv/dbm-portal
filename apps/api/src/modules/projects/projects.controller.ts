@@ -1,0 +1,98 @@
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Req,
+  UseGuards,
+  HttpCode,
+  BadRequestException,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { AuthGuard } from '../auth/auth.guard';
+import { ProjectsService } from './projects.service';
+import { CreateProjectDto } from './dto/create-project.dto';
+import { UpdateProjectDto } from './dto/update-project.dto';
+
+@ApiTags('Projects')
+@Controller('projects')
+@UseGuards(AuthGuard)
+@ApiBearerAuth()
+export class ProjectsController {
+  constructor(private projectsService: ProjectsService) {}
+
+  @Post()
+  @ApiOperation({ summary: 'Create a new project' })
+  async createProject(
+    @Req() req: any,
+    @Body() createProjectDto: CreateProjectDto,
+  ) {
+    const userId = req.userId;
+    return this.projectsService.createProject(userId, createProjectDto);
+  }
+
+  @Get()
+  @ApiOperation({ summary: "List caller's projects" })
+  async listProjects(@Req() req: any) {
+    const userId = req.userId;
+    return this.projectsService.listProjects(userId);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get project by ID with documents and scopeDocument' })
+  async getProject(@Req() req: any, @Param('id') id: string) {
+    const userId = req.userId;
+    return this.projectsService.getProject(id, userId);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update mutable project fields' })
+  async updateProject(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() updateProjectDto: UpdateProjectDto,
+  ) {
+    const userId = req.userId;
+    return this.projectsService.updateProject(id, userId, updateProjectDto);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Soft delete a project' })
+  async deleteProject(@Req() req: any, @Param('id') id: string) {
+    const userId = req.userId;
+    await this.projectsService.deleteProject(id, userId);
+  }
+
+  @Post(':id/documents')
+  @ApiOperation({ summary: 'Record a document upload' })
+  async addDocument(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body()
+    body: {
+      s3Key: string;
+      filename: string;
+      category: string;
+    },
+  ) {
+    const userId = req.userId;
+
+    if (!body.s3Key || !body.filename || !body.category) {
+      throw new BadRequestException(
+        's3Key, filename, and category are required',
+      );
+    }
+
+    return this.projectsService.addDocument(
+      id,
+      userId,
+      body.s3Key,
+      body.filename,
+      body.category,
+    );
+  }
+}

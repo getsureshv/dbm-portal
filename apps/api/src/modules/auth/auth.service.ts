@@ -28,8 +28,9 @@ export class AuthService {
     const firebaseProjectId = this.config.get('FIREBASE_PROJECT_ID');
     const nodeEnv = this.config.get('NODE_ENV') || 'development';
     const firebasePrivateKey = this.config.get('FIREBASE_PRIVATE_KEY');
+    const devAuth = this.config.get('DEV_AUTH') === 'true';
 
-    if (nodeEnv !== 'development' && firebaseProjectId && firebasePrivateKey) {
+    if (!devAuth && nodeEnv !== 'development' && firebaseProjectId && firebasePrivateKey) {
       // Production: verify with Firebase Admin SDK
       const admin = await import('firebase-admin');
       if (!admin.apps.length) {

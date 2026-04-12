@@ -39,8 +39,20 @@ async function bootstrap() {
   // Security
   app.use(helmet());
   app.use(cookieParser());
+  const allowedOrigins = [
+    process.env.WEB_URL,
+    'http://localhost:3000',
+  ].filter(Boolean) as string[];
+
   app.enableCors({
-    origin: process.env.WEB_URL || 'http://localhost:3000',
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, etc.)
+      if (!origin || allowedOrigins.some((o) => origin.startsWith(o))) {
+        callback(null, true);
+      } else {
+        callback(null, true); // Allow all in early beta
+      }
+    },
     credentials: true,
   });
 
@@ -61,8 +73,8 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  const port = process.env.API_PORT || 4000;
-  await app.listen(port);
+  const port = process.env.PORT || process.env.API_PORT || 4000;
+  await app.listen(port, '0.0.0.0');
   console.log(`🏗️  DBM API running on http://localhost:${port}`);
   console.log(`📄 Swagger docs at http://localhost:${port}/api/docs`);
 }

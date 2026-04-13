@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   Req,
   UseGuards,
   HttpCode,
@@ -39,6 +40,15 @@ export class ProjectsController {
   async listProjects(@Req() req: any) {
     const userId = req.userId;
     return this.projectsService.listProjects(userId);
+  }
+
+  @Get('opportunities')
+  @ApiOperation({ summary: 'List available projects for providers to browse' })
+  async listOpportunities(
+    @Query('type') type?: string,
+    @Query('zipCode') zipCode?: string,
+  ) {
+    return this.projectsService.listOpportunities({ type, zipCode });
   }
 
   @Get(':id')

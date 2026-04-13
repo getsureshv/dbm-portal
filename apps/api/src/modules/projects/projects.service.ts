@@ -61,6 +61,52 @@ export class ProjectsService {
     });
   }
 
+  /**
+   * List projects available for providers to browse.
+   * Returns all non-deleted projects (from all owners) with scope data.
+   * Optionally filter by type and zipCode.
+   */
+  async listOpportunities(filters: {
+    type?: string;
+    zipCode?: string;
+  }) {
+    const where: any = {
+      deletedAt: null,
+    };
+
+    if (filters.type) {
+      where.type = filters.type;
+    }
+
+    if (filters.zipCode) {
+      where.zipCode = filters.zipCode;
+    }
+
+    const projects = await this.prisma.project.findMany({
+      where,
+      include: {
+        scopeDocument: {
+          select: {
+            completenessPercent: true,
+            status: true,
+            projectScope: true,
+            timeline: true,
+            preferredStartDate: true,
+          },
+        },
+        owner: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return projects;
+  }
+
   async getProject(id: string, userId: string) {
     this.validateUuid(id);
     const project = await this.prisma.project.findUnique({

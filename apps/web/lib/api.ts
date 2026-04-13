@@ -143,6 +143,40 @@ export const projects = {
   delete: (id: string) => request<void>(`/projects/${id}`, { method: 'DELETE' }),
 };
 
+// ─── Opportunities ────────────────────────────────────────
+
+export interface ApiOpportunity {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  zipCode: string;
+  createdAt: string;
+  owner: {
+    id: string;
+    name: string | null;
+  };
+  scopeDocument: {
+    completenessPercent: number;
+    status: string;
+    projectScope: string | null;
+    timeline: string | null;
+    preferredStartDate: string | null;
+  } | null;
+}
+
+export const opportunities = {
+  list: (params?: { type?: string; zipCode?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.type) qs.set('type', params.type);
+    if (params?.zipCode) qs.set('zipCode', params.zipCode);
+    const queryStr = qs.toString();
+    return request<ApiOpportunity[]>(
+      `/projects/opportunities${queryStr ? `?${queryStr}` : ''}`,
+    );
+  },
+};
+
 // ─── Discovery ─────────────────────────────────────────────
 
 export const discovery = {

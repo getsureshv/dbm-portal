@@ -178,11 +178,19 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
                 <Sparkles className="text-gold" size={20} />
                 <h3 className="font-semibold text-white">AI Scope Architect</h3>
               </div>
-              <p className="text-sm text-white/70 mb-4">
+              <p className="text-sm text-white/70 mb-2">
                 {project.scopeDocument
                   ? `Scope is ${project.scopeDocument.completenessPercent}% complete`
                   : 'Generate detailed scope of work with AI assistance'}
               </p>
+              {project.scopeDocument && project.scopeDocument.completenessPercent > 0 && (
+                <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden mb-4">
+                  <div
+                    className="h-full bg-gradient-to-r from-gold to-gold/70"
+                    style={{ width: `${project.scopeDocument.completenessPercent}%` }}
+                  />
+                </div>
+              )}
               <Link
                 href={`/projects/${params.id}/scope`}
                 className="block w-full text-center bg-gold text-navy font-semibold py-2 rounded-lg hover:bg-gold/90 transition-colors"
@@ -242,19 +250,81 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
       )}
 
       {activeTab === 'scope' && (
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-8">
-          <h2 className="text-xl font-bold text-white mb-4">Project Scope</h2>
-          <p className="text-white/60 mb-6">
-            Generate and manage detailed scope of work using AI assistance
-          </p>
-          <Link
-            href={`/projects/${params.id}/scope`}
-            className="inline-flex items-center gap-2 bg-gold text-navy font-semibold px-6 py-2.5 rounded-lg hover:bg-gold/90 transition-colors"
-          >
-            <Sparkles size={18} />
-            Open AI Scope Architect
-            <ChevronRight size={18} />
-          </Link>
+        <div className="space-y-6">
+          {/* Completeness + Actions */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <Sparkles className="text-gold" size={22} />
+                <div>
+                  <h2 className="text-xl font-bold text-white">Scope of Work</h2>
+                  <p className="text-white/50 text-sm">
+                    {project.scopeDocument
+                      ? `${project.scopeDocument.completenessPercent}% complete — ${project.scopeDocument.status.replace('_', ' ')}`
+                      : 'Not started'}
+                  </p>
+                </div>
+              </div>
+              <Link
+                href={`/projects/${params.id}/scope`}
+                className="inline-flex items-center gap-2 bg-gold text-navy font-semibold px-5 py-2 rounded-lg hover:bg-gold/90 transition-colors text-sm"
+              >
+                <Sparkles size={16} />
+                {project.scopeDocument && project.scopeDocument.completenessPercent > 0
+                  ? 'Continue Interview'
+                  : 'Start AI Scope'}
+                <ChevronRight size={16} />
+              </Link>
+            </div>
+            {project.scopeDocument && (
+              <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-gold to-gold/70 transition-all"
+                  style={{ width: `${project.scopeDocument.completenessPercent}%` }}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Scope Fields */}
+          {project.scopeDocument && project.scopeDocument.completenessPercent > 0 ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {[
+                { label: 'Project Scope', value: project.scopeDocument.projectScope },
+                { label: 'Dimensions & Specifications', value: project.scopeDocument.dimensions },
+                { label: 'Materials & Grade', value: project.scopeDocument.materialGrade },
+                { label: 'Timeline', value: project.scopeDocument.timeline },
+                { label: 'Milestones', value: project.scopeDocument.milestones },
+                { label: 'Special Conditions', value: project.scopeDocument.specialConditions },
+                { label: 'Preferred Start Date', value: project.scopeDocument.preferredStartDate },
+                { label: 'Site Constraints', value: project.scopeDocument.siteConstraints },
+                { label: 'Aesthetic Preferences', value: project.scopeDocument.aestheticPreferences },
+              ]
+                .filter((s) => s.value)
+                .map((section) => (
+                  <div
+                    key={section.label}
+                    className="bg-white/5 border border-white/10 rounded-2xl p-6"
+                  >
+                    <h3 className="text-sm font-semibold text-gold mb-3 uppercase tracking-wide">
+                      {section.label}
+                    </h3>
+                    <p className="text-white/80 text-sm leading-relaxed whitespace-pre-wrap">
+                      {section.value}
+                    </p>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <div className="bg-white/5 border border-dashed border-white/20 rounded-2xl p-12 text-center">
+              <Sparkles className="text-gold/30 mx-auto mb-4" size={40} />
+              <h3 className="font-semibold text-white/60 mb-2">No scope data yet</h3>
+              <p className="text-sm text-white/40 max-w-md mx-auto">
+                Use the AI Scope Architect to interview about your project and
+                automatically generate a detailed scope of work.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

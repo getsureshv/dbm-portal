@@ -178,14 +178,14 @@ export default function ProfilePage() {
   }) => (
     <div className="flex items-center justify-between mb-4">
       <div className="flex items-center gap-2">
-        <Icon size={20} className="text-gold" />
-        <h2 className="text-lg font-semibold text-white">{title}</h2>
+        <Icon size={20} className="text-amber-600" />
+        <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
       </div>
       {editingSection === section ? (
         <div className="flex items-center gap-2">
           <button
             onClick={cancelEditing}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm text-white/70 hover:text-white transition-colors"
+            className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
           >
             <X size={14} />
             Cancel
@@ -193,7 +193,7 @@ export default function ProfilePage() {
           <button
             onClick={saveSection}
             disabled={saving}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gold text-navy font-medium rounded-lg hover:bg-gold-dark transition-colors disabled:opacity-50"
+            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-amber-500 text-white font-medium rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50"
           >
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             Save
@@ -202,7 +202,7 @@ export default function ProfilePage() {
       ) : (
         <button
           onClick={() => startEditing(section)}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm text-gold/80 hover:text-gold border border-gold/20 hover:border-gold/40 rounded-lg transition-colors"
+          className="flex items-center gap-1 px-3 py-1.5 text-sm text-amber-600 hover:text-amber-700 border border-amber-200 hover:border-amber-300 rounded-lg transition-colors"
         >
           <Pencil size={14} />
           Edit
@@ -221,10 +221,10 @@ export default function ProfilePage() {
     icon?: LucideIcon;
   }) => (
     <div className="space-y-1">
-      <p className="text-xs text-white/50 uppercase tracking-wider">{label}</p>
+      <p className="text-xs text-gray-500 uppercase tracking-wider">{label}</p>
       <div className="flex items-center gap-2">
-        {Icon && <Icon size={14} className="text-white/40" />}
-        <p className="text-sm text-white/90">{value || '---'}</p>
+        {Icon && <Icon size={14} className="text-gray-400" />}
+        <p className="text-sm text-gray-800">{value || '---'}</p>
       </div>
     </div>
   );
@@ -241,37 +241,37 @@ export default function ProfilePage() {
     placeholder?: string;
   }) => (
     <div className="space-y-1">
-      <label className="text-xs text-white/50 uppercase tracking-wider">{label}</label>
+      <label className="text-xs text-gray-500 uppercase tracking-wider">{label}</label>
       <input
         type={type}
         value={(formData[field] as string) || ''}
         onChange={(e) => updateFormField(field, type === 'number' ? e.target.value : e.target.value)}
         placeholder={placeholder}
-        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-gold/50 transition-colors"
+        className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 transition-colors"
       />
     </div>
   );
 
-  // ─── Loading state ───────────────────────────────────────
+  // --- Loading state ---
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full p-8">
-        <Loader2 className="animate-spin text-gold" size={32} />
+        <Loader2 className="animate-spin text-amber-600" size={32} />
       </div>
     );
   }
 
-  // ─── Error state ─────────────────────────────────────────
+  // --- Error state ---
 
   if (error && !profile) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8 gap-4">
-        <AlertCircle className="text-red-400" size={48} />
-        <p className="text-white/70 text-center">{error}</p>
+        <AlertCircle className="text-red-500" size={48} />
+        <p className="text-gray-600 text-center">{error}</p>
         <button
           onClick={() => { setLoading(true); fetchProfile(); }}
-          className="px-4 py-2 bg-gold text-navy font-medium rounded-lg hover:bg-gold-dark transition-colors"
+          className="px-4 py-2 bg-amber-500 text-white font-medium rounded-lg hover:bg-amber-600 transition-colors"
         >
           Retry
         </button>
@@ -286,7 +286,7 @@ export default function ProfilePage() {
   const address = p?.address as Record<string, string> | null;
   const trades = p?.styleOfWork || p?.materialTypes || p?.serviceTypes || [];
 
-  // ─── OWNER simple profile ────────────────────────────────
+  // --- OWNER simple profile ---
 
   if (isOwner) {
     return (
@@ -294,22 +294,22 @@ export default function ProfilePage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white">My Profile</h1>
-            <p className="text-white/60 mt-1">Manage your account information</p>
+            <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
+            <p className="text-gray-500 mt-1">Manage your account information</p>
           </div>
-          <span className="px-3 py-1 bg-gold/20 text-gold text-sm font-medium rounded-full border border-gold/30">
+          <span className="px-3 py-1 bg-amber-50 text-amber-700 text-sm font-medium rounded-full border border-amber-200">
             Owner
           </span>
         </div>
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-red-300 text-sm">
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm">
             {error}
           </div>
         )}
 
         {/* Contact Info */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
           <SectionHeader title="Contact Information" icon={User} section="contact" />
           {editingSection === 'contact' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -329,29 +329,29 @@ export default function ProfilePage() {
     );
   }
 
-  // ─── PROVIDER full profile ───────────────────────────────
+  // --- PROVIDER full profile ---
 
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Company Profile</h1>
-          <p className="text-white/60 mt-1">Manage your business information and services</p>
+          <h1 className="text-2xl font-bold text-gray-900">Company Profile</h1>
+          <p className="text-gray-500 mt-1">Manage your business information and services</p>
         </div>
-        <span className="px-3 py-1 bg-gold/20 text-gold text-sm font-medium rounded-full border border-gold/30">
+        <span className="px-3 py-1 bg-amber-50 text-amber-700 text-sm font-medium rounded-full border border-amber-200">
           {providerTypeLabel(profile.providerType)}
         </span>
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-red-300 text-sm">
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm">
           {error}
         </div>
       )}
 
       {/* Company Information */}
-      <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
         <SectionHeader title="Company Information" icon={Building2} section="company" />
         {editingSection === 'company' ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -378,7 +378,7 @@ export default function ProfilePage() {
       </div>
 
       {/* Contact Person */}
-      <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
         <SectionHeader title="Contact Person" icon={User} section="contact" />
         {editingSection === 'contact' ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -402,7 +402,7 @@ export default function ProfilePage() {
       </div>
 
       {/* License & Insurance */}
-      <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
         <SectionHeader title="License & Insurance" icon={Shield} section="license" />
         {editingSection === 'license' ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -413,14 +413,14 @@ export default function ProfilePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldDisplay label="License Number" value={p?.licenseNumber} icon={Shield} />
             <div className="space-y-1">
-              <p className="text-xs text-white/50 uppercase tracking-wider">License Status</p>
+              <p className="text-xs text-gray-500 uppercase tracking-wider">License Status</p>
               <span
                 className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
                   p?.licenseStatus === 'ACTIVE'
-                    ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                    ? 'bg-green-50 text-green-700 border border-green-200'
                     : p?.licenseStatus === 'EXPIRED'
-                      ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                      : 'bg-white/10 text-white/60 border border-white/20'
+                      ? 'bg-red-50 text-red-700 border border-red-200'
+                      : 'bg-gray-100 text-gray-500 border border-gray-200'
                 }`}
               >
                 {p?.licenseStatus || 'N/A'}
@@ -431,7 +431,7 @@ export default function ProfilePage() {
       </div>
 
       {/* Trades & Services */}
-      <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
         <SectionHeader title="Trades & Services" icon={Wrench} section="trades" />
         {editingSection === 'trades' ? (
           <div className="space-y-4">
@@ -439,12 +439,12 @@ export default function ProfilePage() {
               {(formData.trades as string[] || []).map((trade, i) => (
                 <span
                   key={i}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gold/20 text-gold text-sm rounded-full border border-gold/30"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 text-sm rounded-full border border-amber-200"
                 >
                   {trade}
                   <button
                     onClick={() => removeTrade(i)}
-                    className="text-gold/60 hover:text-gold transition-colors"
+                    className="text-amber-400 hover:text-amber-700 transition-colors"
                   >
                     <X size={12} />
                   </button>
@@ -463,17 +463,17 @@ export default function ProfilePage() {
                   }
                 }}
                 placeholder="Add a trade or service..."
-                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-gold/50 transition-colors"
+                className="flex-1 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 transition-colors"
               />
               <button
                 onClick={addTrade}
-                className="px-4 py-2 bg-gold/20 text-gold text-sm font-medium rounded-lg border border-gold/30 hover:bg-gold/30 transition-colors"
+                className="px-4 py-2 bg-amber-50 text-amber-700 text-sm font-medium rounded-lg border border-amber-200 hover:bg-amber-100 transition-colors"
               >
                 Add
               </button>
             </div>
             {p?.tradeCategory && (
-              <div className="pt-2 border-t border-white/10">
+              <div className="pt-2 border-t border-gray-200">
                 <FieldDisplay label="Trade Category" value={p.tradeCategory.label} />
               </div>
             )}
@@ -488,17 +488,17 @@ export default function ProfilePage() {
                 {trades.map((trade, i) => (
                   <span
                     key={i}
-                    className="px-3 py-1.5 bg-gold/20 text-gold text-sm rounded-full border border-gold/30"
+                    className="px-3 py-1.5 bg-amber-50 text-amber-700 text-sm rounded-full border border-amber-200"
                   >
                     {trade}
                   </span>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-white/40 italic">No trades or services listed</p>
+              <p className="text-sm text-gray-400 italic">No trades or services listed</p>
             )}
             {p?.tradeCategory && (
-              <div className="pt-3 border-t border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="pt-3 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FieldDisplay label="Trade Category" value={p.tradeCategory.label} icon={Award} />
                 {p.tradeName && (
                   <FieldDisplay label="Trade Name" value={p.tradeName.name} icon={Wrench} />
@@ -510,12 +510,12 @@ export default function ProfilePage() {
       </div>
 
       {/* Service Areas */}
-      <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
         <SectionHeader title="Service Areas" icon={MapPin} section="areas" />
         {editingSection === 'areas' ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-xs text-white/50 uppercase tracking-wider">Street</label>
+              <label className="text-xs text-gray-500 uppercase tracking-wider">Street</label>
               <input
                 type="text"
                 value={(formData.address as Record<string, string>)?.street || ''}
@@ -526,11 +526,11 @@ export default function ProfilePage() {
                   })
                 }
                 placeholder="123 Main St"
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-gold/50 transition-colors"
+                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 transition-colors"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-white/50 uppercase tracking-wider">City</label>
+              <label className="text-xs text-gray-500 uppercase tracking-wider">City</label>
               <input
                 type="text"
                 value={(formData.address as Record<string, string>)?.city || ''}
@@ -541,11 +541,11 @@ export default function ProfilePage() {
                   })
                 }
                 placeholder="Austin"
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-gold/50 transition-colors"
+                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 transition-colors"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-white/50 uppercase tracking-wider">State</label>
+              <label className="text-xs text-gray-500 uppercase tracking-wider">State</label>
               <input
                 type="text"
                 value={(formData.address as Record<string, string>)?.state || ''}
@@ -556,11 +556,11 @@ export default function ProfilePage() {
                   })
                 }
                 placeholder="TX"
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-gold/50 transition-colors"
+                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 transition-colors"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-white/50 uppercase tracking-wider">Zip Code</label>
+              <label className="text-xs text-gray-500 uppercase tracking-wider">Zip Code</label>
               <input
                 type="text"
                 value={(formData.address as Record<string, string>)?.zipCode || ''}
@@ -571,7 +571,7 @@ export default function ProfilePage() {
                   })
                 }
                 placeholder="78701"
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-gold/50 transition-colors"
+                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 transition-colors"
               />
             </div>
           </div>

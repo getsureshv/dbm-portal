@@ -47,7 +47,7 @@ export default function NewProjectPage() {
       {/* Back link */}
       <Link
         href="/projects"
-        className="inline-flex items-center gap-2 text-white/60 hover:text-white transition-colors mb-8"
+        className="inline-flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors mb-8"
       >
         <ArrowLeft size={16} />
         Back to Projects
@@ -55,15 +55,15 @@ export default function NewProjectPage() {
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Create New Project</h1>
-        <p className="text-white/60">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Create New Project</h1>
+        <p className="text-gray-500">
           Set up the basics and then use the AI Scope Architect to define your scope of work.
         </p>
       </div>
 
       {/* Error */}
       {error && (
-        <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-3 text-red-400">
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3 text-red-600">
           <AlertCircle size={18} />
           <span>{error}</span>
         </div>
@@ -72,8 +72,8 @@ export default function NewProjectPage() {
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Project Title */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-          <label className="block text-sm font-medium text-white/80 mb-2">
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
             Project Title
           </label>
           <input
@@ -81,14 +81,14 @@ export default function NewProjectPage() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g. Kitchen Remodel, Office Buildout"
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:border-gold/50 transition-colors"
+            className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 transition-colors"
             required
           />
         </div>
 
         {/* Project Type */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-          <label className="block text-sm font-medium text-white/80 mb-4">
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+          <label className="block text-sm font-medium text-gray-700 mb-4">
             Project Type
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -99,8 +99,8 @@ export default function NewProjectPage() {
                 onClick={() => setType(pt.value)}
                 className={`p-4 rounded-xl border text-left transition-all ${
                   type === pt.value
-                    ? 'bg-gold/20 border-gold/50 text-gold'
-                    : 'bg-white/5 border-white/10 text-white/70 hover:border-white/30'
+                    ? 'bg-amber-50 border-amber-500 text-amber-700'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
                 }`}
               >
                 <p className="font-semibold text-sm">{pt.label}</p>
@@ -111,8 +111,8 @@ export default function NewProjectPage() {
         </div>
 
         {/* Zip Code */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-          <label className="block text-sm font-medium text-white/80 mb-2">
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
             Project Zip Code
           </label>
           <input
@@ -121,7 +121,7 @@ export default function NewProjectPage() {
             onChange={(e) => setZipCode(e.target.value)}
             placeholder="e.g. 75019"
             maxLength={10}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:border-gold/50 transition-colors"
+            className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 transition-colors"
             required
           />
         </div>
@@ -130,7 +130,7 @@ export default function NewProjectPage() {
         <button
           type="submit"
           disabled={!canSubmit}
-          className="w-full bg-gold text-navy font-semibold py-3 rounded-lg hover:bg-gold/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+          className="w-full bg-amber-500 text-white font-semibold py-3 rounded-lg hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
         >
           {submitting ? (
             <>

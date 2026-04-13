@@ -8,12 +8,12 @@ import { projects as projectsApi, ApiProject } from '../../../lib/api';
 const FILTERS = ['All', 'Active', 'Archived'];
 
 const STATUS_COLORS: Record<string, string> = {
-  DISCOVERY: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  BIDDING: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  CONTRACTING: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  EXECUTION: 'bg-green-500/20 text-green-400 border-green-500/30',
-  CLOSING: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  ARCHIVED: 'bg-white/10 text-white/40 border-white/20',
+  DISCOVERY: 'bg-amber-50 text-amber-700 border-amber-200',
+  BIDDING: 'bg-blue-50 text-blue-700 border-blue-200',
+  CONTRACTING: 'bg-purple-50 text-purple-700 border-purple-200',
+  EXECUTION: 'bg-green-50 text-green-700 border-green-200',
+  CLOSING: 'bg-orange-50 text-orange-700 border-orange-200',
+  ARCHIVED: 'bg-gray-100 text-gray-500 border-gray-200',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -50,12 +50,12 @@ export default function ProjectsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Projects</h1>
-          <p className="text-white/60">Manage all your construction projects</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Projects</h1>
+          <p className="text-gray-500">Manage all your construction projects</p>
         </div>
         <Link
           href="/projects/new"
-          className="bg-gold text-navy font-semibold px-6 py-2.5 rounded-lg hover:bg-gold/90 transition-colors flex items-center gap-2"
+          className="bg-amber-500 text-white font-semibold px-6 py-2.5 rounded-lg hover:bg-amber-600 transition-colors flex items-center gap-2 shadow-sm"
         >
           <Plus size={20} />
           New Project
@@ -70,8 +70,8 @@ export default function ProjectsPage() {
             onClick={() => setActiveFilter(filter)}
             className={`px-6 py-2.5 rounded-lg font-medium transition-all ${
               activeFilter === filter
-                ? 'bg-gold text-navy'
-                : 'bg-white/5 border border-white/10 text-white hover:border-white/20'
+                ? 'bg-amber-500 text-white shadow-sm'
+                : 'bg-white border border-gray-200 text-gray-700 hover:border-gray-300 hover:shadow-sm'
             }`}
           >
             {filter}
@@ -82,7 +82,7 @@ export default function ProjectsPage() {
       {/* Loading */}
       {loading ? (
         <div className="flex justify-center py-16">
-          <Loader2 className="animate-spin text-gold" size={32} />
+          <Loader2 className="animate-spin text-amber-500" size={32} />
         </div>
       ) : (
         <>
@@ -92,24 +92,24 @@ export default function ProjectsPage() {
               <Link
                 key={project.id}
                 href={`/projects/${project.id}`}
-                className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:border-gold/30 hover:bg-gold/5 transition-all group"
+                className="bg-white border border-gray-200 rounded-2xl overflow-hidden hover:border-amber-300 hover:shadow-lg transition-all group"
               >
                 {/* Image Placeholder */}
-                <div className="h-40 bg-gradient-to-br from-gold/20 to-white/5 flex items-center justify-center border-b border-white/10">
-                  <span className="text-white/40 text-sm font-medium">{project.type}</span>
+                <div className="h-40 bg-gradient-to-br from-amber-50 to-gray-100 flex items-center justify-center border-b border-gray-200">
+                  <span className="text-gray-400 text-sm font-medium">{project.type}</span>
                 </div>
 
                 {/* Content */}
                 <div className="p-6">
                   <div className="flex items-start justify-between mb-3">
-                    <h3 className="font-semibold text-white group-hover:text-gold transition-colors leading-tight">
+                    <h3 className="font-semibold text-gray-900 group-hover:text-amber-600 transition-colors leading-tight">
                       {project.title}
                     </h3>
                   </div>
 
-                  <p className="text-sm text-white/60 mb-4">{project.zipCode}</p>
+                  <p className="text-sm text-gray-500 mb-4">{project.zipCode}</p>
 
-                  <div className="flex items-center gap-2 text-xs text-white/40 mb-4">
+                  <div className="flex items-center gap-2 text-xs text-gray-400 mb-4">
                     <Calendar size={14} />
                     {new Date(project.createdAt).toLocaleDateString()}
                   </div>
@@ -121,9 +121,9 @@ export default function ProjectsPage() {
                   </span>
 
                   {project.scopeDocument && project.scopeDocument.completenessPercent > 0 && (
-                    <div className="mt-3 w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                    <div className="mt-3 w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-gradient-to-r from-gold to-gold/70"
+                        className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full"
                         style={{ width: `${project.scopeDocument.completenessPercent}%` }}
                       ></div>
                     </div>
@@ -135,10 +135,10 @@ export default function ProjectsPage() {
 
           {filteredProjects.length === 0 && (
             <div className="text-center py-12">
-              <p className="text-white/60 text-lg">No projects found</p>
+              <p className="text-gray-500 text-lg">No projects found</p>
               <Link
                 href="/projects/new"
-                className="text-gold hover:text-gold/80 text-sm font-medium mt-2 inline-block transition-colors"
+                className="text-amber-600 hover:text-amber-700 text-sm font-medium mt-2 inline-block transition-colors"
               >
                 Create your first project
               </Link>

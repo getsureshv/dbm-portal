@@ -7,12 +7,12 @@ import { useAuth } from '../../../lib/auth-context';
 import { projects as projectsApi, ApiProject } from '../../../lib/api';
 
 const STATUS_COLORS: Record<string, string> = {
-  DISCOVERY: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  BIDDING: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  CONTRACTING: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  EXECUTION: 'bg-green-500/20 text-green-400 border-green-500/30',
-  CLOSING: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  ARCHIVED: 'bg-white/10 text-white/40 border-white/20',
+  DISCOVERY: 'bg-amber-50 text-amber-700 border-amber-200',
+  BIDDING: 'bg-blue-50 text-blue-700 border-blue-200',
+  CONTRACTING: 'bg-purple-50 text-purple-700 border-purple-200',
+  EXECUTION: 'bg-green-50 text-green-700 border-green-200',
+  CLOSING: 'bg-orange-50 text-orange-700 border-orange-200',
+  ARCHIVED: 'bg-gray-100 text-gray-500 border-gray-200',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -43,25 +43,25 @@ export default function DashboardPage() {
   const displayName = user?.name?.split(' ')[0] || 'there';
 
   const stats = [
-    { icon: BarChart3, label: 'Active Projects', value: String(activeCount), color: 'from-gold to-gold/70' },
-    { icon: Clock, label: 'Total Projects', value: String(projectList.length), color: 'from-blue-400 to-blue-600' },
-    { icon: Zap, label: 'AI Scopes Done', value: String(scopeCount), color: 'from-purple-400 to-purple-600' },
+    { icon: BarChart3, label: 'Active Projects', value: String(activeCount), iconBg: 'bg-amber-100', iconColor: 'text-amber-600' },
+    { icon: Clock, label: 'Total Projects', value: String(projectList.length), iconBg: 'bg-blue-100', iconColor: 'text-blue-600' },
+    { icon: Zap, label: 'AI Scopes Done', value: String(scopeCount), iconBg: 'bg-purple-100', iconColor: 'text-purple-600' },
   ];
 
   // PROVIDER dashboard
   if (user?.role === 'PROVIDER') {
     const providerStats = [
-      { icon: Building2, label: 'My Profile', value: user.name || 'Incomplete', color: 'from-gold to-gold/70' },
-      { icon: Search, label: 'Available Opportunities', value: '0', color: 'from-blue-400 to-blue-600' },
-      { icon: FileText, label: 'Bids Submitted', value: '0', color: 'from-purple-400 to-purple-600' },
+      { icon: Building2, label: 'My Profile', value: user.name || 'Incomplete', iconBg: 'bg-amber-100', iconColor: 'text-amber-600' },
+      { icon: Search, label: 'Available Opportunities', value: '0', iconBg: 'bg-blue-100', iconColor: 'text-blue-600' },
+      { icon: FileText, label: 'Bids Submitted', value: '0', iconBg: 'bg-purple-100', iconColor: 'text-purple-600' },
     ];
 
     return (
       <div className="p-8 space-y-8">
         {/* Welcome Header */}
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Welcome back, {displayName}</h1>
-          <p className="text-white/60">Here&apos;s your provider dashboard</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {displayName}</h1>
+          <p className="text-gray-500">Here&apos;s your provider dashboard</p>
         </div>
 
         {/* Stats Cards */}
@@ -71,25 +71,25 @@ export default function DashboardPage() {
             return (
               <div
                 key={index}
-                className="bg-white/5 border border-white/10 rounded-2xl p-6 hover:border-white/20 transition-colors"
+                className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow"
               >
                 <div className="flex items-start justify-between mb-4">
-                  <div className={`p-3 rounded-lg bg-gradient-to-br ${stat.color} bg-opacity-20`}>
-                    <Icon className="text-gold" size={24} />
+                  <div className={`p-3 rounded-lg ${stat.iconBg}`}>
+                    <Icon className={stat.iconColor} size={24} />
                   </div>
                 </div>
-                <p className="text-white/60 text-sm mb-1">{stat.label}</p>
-                <p className="text-3xl font-bold text-white">{stat.value}</p>
+                <p className="text-gray-500 text-sm mb-1">{stat.label}</p>
+                <p className="text-3xl font-bold text-gray-900">{stat.value}</p>
               </div>
             );
           })}
         </div>
 
         {/* Recent Activity */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-8">
-          <h2 className="text-xl font-bold text-white mb-6">Recent Activity</h2>
+        <div className="bg-white border border-gray-200 rounded-xl p-8 shadow-sm">
+          <h2 className="text-xl font-bold text-gray-900 mb-6">Recent Activity</h2>
           <div className="text-center py-8">
-            <p className="text-white/60">No recent activity</p>
+            <p className="text-gray-500">No recent activity</p>
           </div>
         </div>
 
@@ -97,23 +97,23 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Link
             href="/profile"
-            className="bg-gold text-navy font-semibold p-6 rounded-2xl hover:bg-gold/90 transition-colors flex items-center gap-3 group"
+            className="bg-amber-500 text-white font-semibold p-6 rounded-2xl hover:bg-amber-600 transition-colors flex items-center gap-3 shadow-sm"
           >
             <Building2 size={24} />
             <span>View Profile</span>
           </Link>
           <Link
             href="/opportunities"
-            className="bg-white/5 border border-white/10 text-white font-semibold p-6 rounded-2xl hover:border-gold/30 hover:bg-gold/5 transition-colors flex items-center gap-3 group"
+            className="bg-white border border-gray-200 text-gray-900 font-semibold p-6 rounded-2xl hover:border-amber-300 hover:shadow-md transition-all flex items-center gap-3"
           >
-            <Search size={24} />
+            <Search size={24} className="text-gray-500" />
             <span>Browse Opportunities</span>
           </Link>
           <Link
             href="/profile"
-            className="bg-white/5 border border-white/10 text-white font-semibold p-6 rounded-2xl hover:border-gold/30 hover:bg-gold/5 transition-colors flex items-center gap-3 group"
+            className="bg-white border border-gray-200 text-gray-900 font-semibold p-6 rounded-2xl hover:border-amber-300 hover:shadow-md transition-all flex items-center gap-3"
           >
-            <Settings size={24} />
+            <Settings size={24} className="text-gray-500" />
             <span>Update Trades</span>
           </Link>
         </div>
@@ -126,8 +126,8 @@ export default function DashboardPage() {
     <div className="p-8 space-y-8">
       {/* Welcome Header */}
       <div>
-        <h1 className="text-3xl font-bold text-white mb-2">Welcome back, {displayName}</h1>
-        <p className="text-white/60">Here&apos;s what&apos;s happening with your projects</p>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {displayName}</h1>
+        <p className="text-gray-500">Here&apos;s what&apos;s happening with your projects</p>
       </div>
 
       {/* Stats Cards */}
@@ -137,16 +137,16 @@ export default function DashboardPage() {
           return (
             <div
               key={index}
-              className="bg-white/5 border border-white/10 rounded-2xl p-6 hover:border-white/20 transition-colors"
+              className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow"
             >
               <div className="flex items-start justify-between mb-4">
-                <div className={`p-3 rounded-lg bg-gradient-to-br ${stat.color} bg-opacity-20`}>
-                  <Icon className="text-gold" size={24} />
+                <div className={`p-3 rounded-lg ${stat.iconBg}`}>
+                  <Icon className={stat.iconColor} size={24} />
                 </div>
               </div>
-              <p className="text-white/60 text-sm mb-1">{stat.label}</p>
-              <p className="text-3xl font-bold text-white">
-                {loading ? <Loader2 className="animate-spin" size={24} /> : stat.value}
+              <p className="text-gray-500 text-sm mb-1">{stat.label}</p>
+              <p className="text-3xl font-bold text-gray-900">
+                {loading ? <Loader2 className="animate-spin text-amber-500" size={24} /> : stat.value}
               </p>
             </div>
           );
@@ -154,12 +154,12 @@ export default function DashboardPage() {
       </div>
 
       {/* Recent Projects */}
-      <div className="bg-white/5 border border-white/10 rounded-2xl p-8">
+      <div className="bg-white border border-gray-200 rounded-xl p-8 shadow-sm">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white">Recent Projects</h2>
+          <h2 className="text-xl font-bold text-gray-900">Recent Projects</h2>
           <Link
             href="/projects"
-            className="text-gold hover:text-gold/80 text-sm font-medium transition-colors"
+            className="text-amber-600 hover:text-amber-700 text-sm font-medium transition-colors"
           >
             View all
           </Link>
@@ -167,12 +167,12 @@ export default function DashboardPage() {
 
         {loading ? (
           <div className="flex justify-center py-8">
-            <Loader2 className="animate-spin text-gold" size={24} />
+            <Loader2 className="animate-spin text-amber-500" size={24} />
           </div>
         ) : recentProjects.length === 0 ? (
           <div className="text-center py-8">
-            <p className="text-white/60 mb-2">No projects yet</p>
-            <Link href="/projects" className="text-gold text-sm hover:text-gold/80">
+            <p className="text-gray-500 mb-2">No projects yet</p>
+            <Link href="/projects" className="text-amber-600 text-sm hover:text-amber-700">
               Create your first project
             </Link>
           </div>
@@ -182,14 +182,14 @@ export default function DashboardPage() {
               <Link
                 key={project.id}
                 href={`/projects/${project.id}`}
-                className="block p-4 bg-white/5 border border-white/10 rounded-lg hover:border-gold/30 hover:bg-gold/5 transition-all group"
+                className="block p-4 bg-white border border-gray-200 rounded-lg hover:border-amber-300 hover:shadow-md transition-all group"
               >
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h3 className="font-semibold text-white group-hover:text-gold transition-colors">
+                    <h3 className="font-semibold text-gray-900 group-hover:text-amber-600 transition-colors">
                       {project.title}
                     </h3>
-                    <p className="text-xs text-white/40 mt-1">
+                    <p className="text-xs text-gray-400 mt-1">
                       {new Date(project.createdAt).toLocaleDateString()}
                     </p>
                   </div>
@@ -199,11 +199,11 @@ export default function DashboardPage() {
                     {STATUS_LABELS[project.status] || project.status}
                   </span>
                 </div>
-                <p className="text-sm text-white/60">{project.type}</p>
+                <p className="text-sm text-gray-500">{project.type}</p>
                 {project.scopeDocument && (
-                  <div className="mt-3 w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                  <div className="mt-3 w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-gold to-gold/70"
+                      className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full"
                       style={{ width: `${project.scopeDocument.completenessPercent}%` }}
                     ></div>
                   </div>
@@ -218,24 +218,24 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Link
           href="/projects"
-          className="bg-gold text-navy font-semibold p-6 rounded-2xl hover:bg-gold/90 transition-colors flex items-center gap-3 group"
+          className="bg-amber-500 text-white font-semibold p-6 rounded-2xl hover:bg-amber-600 transition-colors flex items-center gap-3 shadow-sm"
         >
           <Plus size={24} />
           <span>New Project</span>
         </Link>
         <Link
           href="/discovery"
-          className="bg-white/5 border border-white/10 text-white font-semibold p-6 rounded-2xl hover:border-gold/30 hover:bg-gold/5 transition-colors flex items-center gap-3 group"
+          className="bg-white border border-gray-200 text-gray-900 font-semibold p-6 rounded-2xl hover:border-amber-300 hover:shadow-md transition-all flex items-center gap-3"
         >
-          <Users size={24} />
+          <Users size={24} className="text-gray-500" />
           <span>Find Providers</span>
         </Link>
         {recentProjects[0] && (
           <Link
             href={`/projects/${recentProjects[0].id}/scope`}
-            className="bg-white/5 border border-white/10 text-white font-semibold p-6 rounded-2xl hover:border-gold/30 hover:bg-gold/5 transition-colors flex items-center gap-3 group"
+            className="bg-white border border-gray-200 text-gray-900 font-semibold p-6 rounded-2xl hover:border-amber-300 hover:shadow-md transition-all flex items-center gap-3"
           >
-            <Sparkles size={24} />
+            <Sparkles size={24} className="text-gray-500" />
             <span>AI Scope</span>
           </Link>
         )}

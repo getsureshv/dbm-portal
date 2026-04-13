@@ -5,43 +5,17 @@ import {
   Search,
   MapPin,
   HardHat,
-  Building2,
-  ChefHat,
-  Compass,
-  Palette,
-  TreePine,
-  PanelTop,
-  Flame,
-  LayoutGrid,
-  Wrench,
-  DoorOpen,
-  Gem,
-  SquareStack,
-  Hammer,
-  PaintBucket,
-  Sun,
-  Lightbulb,
-  Fence,
-  Waves,
-  TreeDeciduous,
-  Flower2,
-  Car,
-  Construction,
-  Truck,
-  Brush,
   Home,
-  Bug,
-  Sparkles,
-  ClipboardCheck,
-  Users,
-  ShieldCheck,
   ArrowRight,
   Star,
   CheckCircle2,
+  ShieldCheck,
   MessageSquare,
-  FileText,
+  Users,
+  Sparkles,
 } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
+import { getTradeImage } from '../lib/trade-images';
 
 /* ------------------------------------------------------------------ */
 /*  Category Data                                                      */
@@ -50,74 +24,67 @@ import { useState, type ReactNode } from 'react';
 interface Category {
   name: string;
   slug: string;
-  icon: ReactNode;
 }
 
 interface CategoryGroup {
   title: string;
-  bg: string;
   categories: Category[];
 }
 
 const categoryGroups: CategoryGroup[] = [
   {
     title: 'Popular',
-    bg: 'bg-amber-50',
     categories: [
-      { name: 'General Contractors', slug: 'general-contractors', icon: <HardHat size={22} /> },
-      { name: 'Home Builders', slug: 'home-builders', icon: <Building2 size={22} /> },
-      { name: 'Kitchen & Bath Remodelers', slug: 'kitchen-bath-remodelers', icon: <ChefHat size={22} /> },
-      { name: 'Architects', slug: 'architects', icon: <Compass size={22} /> },
-      { name: 'Interior Designers', slug: 'interior-designers', icon: <Palette size={22} /> },
-      { name: 'Landscape Contractors', slug: 'landscape-contractors', icon: <TreePine size={22} /> },
+      { name: 'General Contractors', slug: 'general-contractors' },
+      { name: 'Home Builders', slug: 'home-builders' },
+      { name: 'Kitchen & Bath Remodelers', slug: 'kitchen-bath-remodelers' },
+      { name: 'Architects', slug: 'architects' },
+      { name: 'Interior Designers', slug: 'interior-designers' },
+      { name: 'Landscape Contractors', slug: 'landscape-contractors' },
     ],
   },
   {
     title: 'Remodeling',
-    bg: 'bg-blue-50',
     categories: [
-      { name: 'Siding & Exteriors', slug: 'siding-exteriors', icon: <PanelTop size={22} /> },
-      { name: 'Fireplaces', slug: 'fireplaces', icon: <Flame size={22} /> },
-      { name: 'Custom Countertops', slug: 'custom-countertops', icon: <LayoutGrid size={22} /> },
-      { name: 'Specialty Contractors', slug: 'specialty-contractors', icon: <Wrench size={22} /> },
-      { name: 'Garage Doors', slug: 'garage-doors', icon: <DoorOpen size={22} /> },
-      { name: 'Stone & Concrete', slug: 'stone-concrete', icon: <Gem size={22} /> },
+      { name: 'Siding & Exteriors', slug: 'siding-exteriors' },
+      { name: 'Fireplaces', slug: 'fireplaces' },
+      { name: 'Custom Countertops', slug: 'custom-countertops' },
+      { name: 'Specialty Contractors', slug: 'specialty-contractors' },
+      { name: 'Garage Doors', slug: 'garage-doors' },
+      { name: 'Stone & Concrete', slug: 'stone-concrete' },
     ],
   },
   {
     title: 'Renovation',
-    bg: 'bg-emerald-50',
     categories: [
-      { name: 'Cabinets & Cabinetry', slug: 'cabinets-cabinetry', icon: <SquareStack size={22} /> },
-      { name: 'Flooring Contractors', slug: 'flooring-contractors', icon: <LayoutGrid size={22} /> },
-      { name: 'Carpenters', slug: 'carpenters', icon: <Hammer size={22} /> },
-      { name: 'Painters', slug: 'painters', icon: <PaintBucket size={22} /> },
-      { name: 'Window Contractors', slug: 'window-contractors', icon: <Sun size={22} /> },
-      { name: 'Lighting', slug: 'lighting', icon: <Lightbulb size={22} /> },
+      { name: 'Cabinets & Cabinetry', slug: 'cabinets-cabinetry' },
+      { name: 'Flooring Contractors', slug: 'flooring-contractors' },
+      { name: 'Carpenters', slug: 'carpenters' },
+      { name: 'Painters', slug: 'painters' },
+      { name: 'Window Contractors', slug: 'window-contractors' },
+      { name: 'Lighting', slug: 'lighting' },
     ],
   },
   {
     title: 'Outdoor',
-    bg: 'bg-lime-50',
     categories: [
-      { name: 'Decks & Patios', slug: 'decks-patios', icon: <Fence size={22} /> },
-      { name: 'Pool Builders', slug: 'pool-builders', icon: <Waves size={22} /> },
-      { name: 'Fence Contractors', slug: 'fence-contractors', icon: <Fence size={22} /> },
-      { name: 'Landscaping', slug: 'landscaping', icon: <TreeDeciduous size={22} /> },
-      { name: 'Lawn Care', slug: 'lawn-care', icon: <Flower2 size={22} /> },
-      { name: 'Driveway & Paving', slug: 'driveway-paving', icon: <Car size={22} /> },
+      { name: 'Decks & Patios', slug: 'decks-patios' },
+      { name: 'Pool Builders', slug: 'pool-builders' },
+      { name: 'Fence Contractors', slug: 'fence-contractors' },
+      { name: 'Landscaping', slug: 'landscaping' },
+      { name: 'Lawn Care', slug: 'lawn-care' },
+      { name: 'Driveways', slug: 'driveways' },
     ],
   },
   {
     title: 'Services',
-    bg: 'bg-violet-50',
     categories: [
-      { name: 'Handyman', slug: 'handyman', icon: <Construction size={22} /> },
-      { name: 'Movers', slug: 'movers', icon: <Truck size={22} /> },
-      { name: 'Painters', slug: 'painters-services', icon: <Brush size={22} /> },
-      { name: 'Roofing & Gutters', slug: 'roofing-gutters', icon: <Home size={22} /> },
-      { name: 'Cleaning', slug: 'cleaning', icon: <Sparkles size={22} /> },
-      { name: 'Pest Control', slug: 'pest-control', icon: <Bug size={22} /> },
+      { name: 'Handyman', slug: 'handyman' },
+      { name: 'Movers', slug: 'movers' },
+      { name: 'Roofing', slug: 'roofing' },
+      { name: 'Cleaning', slug: 'cleaning' },
+      { name: 'Pest Control', slug: 'pest-control' },
+      { name: 'Electricians', slug: 'electricians' },
     ],
   },
 ];
@@ -238,7 +205,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── Browse by Category ─────────────────────────────────────── */}
-      <section className="py-16 px-6">
+      <section className="bg-gray-50 py-16 px-6">
         <div className="max-w-7xl mx-auto">
           <h2 className="text-navy text-3xl font-extrabold text-center mb-2">
             Browse Professionals by Category
@@ -253,19 +220,25 @@ export default function LandingPage() {
                 <h3 className="text-navy font-bold text-lg mb-4 pl-1">
                   {group.title}
                 </h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                   {group.categories.map((cat) => (
                     <Link
                       key={cat.slug}
                       href={`/discovery?trade=${cat.slug}`}
-                      className={`group flex flex-col items-center justify-center gap-3 p-5 rounded-xl ${group.bg} border border-transparent hover:border-gold/50 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200`}
+                      className="group bg-white rounded-lg overflow-hidden shadow-sm border border-gray-100 hover:shadow-lg hover:scale-[1.03] transition-all duration-200"
                     >
-                      <div className="w-11 h-11 rounded-lg bg-white shadow-sm flex items-center justify-center text-navy group-hover:text-gold transition-colors">
-                        {cat.icon}
+                      <div className="rounded-t-lg overflow-hidden">
+                        <img
+                          src={getTradeImage(cat.slug)}
+                          alt={cat.name}
+                          className="w-full h-40 object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
                       </div>
-                      <span className="text-navy text-xs font-semibold text-center leading-tight">
-                        {cat.name}
-                      </span>
+                      <div className="py-3 px-2">
+                        <span className="block text-navy text-xs font-semibold text-center leading-tight">
+                          {cat.name}
+                        </span>
+                      </div>
                     </Link>
                   ))}
                 </div>
@@ -276,7 +249,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── How It Works ───────────────────────────────────────────── */}
-      <section className="bg-gray-50 py-20 px-6">
+      <section className="bg-white py-20 px-6">
         <div className="max-w-5xl mx-auto text-center">
           <h2 className="text-navy text-3xl font-extrabold mb-3">
             How It Works
@@ -308,7 +281,7 @@ export default function LandingPage() {
             ].map((item) => (
               <div key={item.step} className="flex flex-col items-center">
                 <div className="relative mb-6">
-                  <div className="w-16 h-16 rounded-2xl bg-white shadow-lg flex items-center justify-center">
+                  <div className="w-16 h-16 rounded-2xl bg-gray-50 shadow-lg flex items-center justify-center">
                     {item.icon}
                   </div>
                   <span className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-navy text-white text-xs font-bold flex items-center justify-center">
@@ -326,7 +299,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── AI Scope Architect Highlight ───────────────────────────── */}
-      <section className="py-20 px-6">
+      <section className="bg-gray-50 py-20 px-6">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center gap-12">
           <div className="flex-1">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gold/10 text-gold text-xs font-bold mb-4">

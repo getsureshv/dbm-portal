@@ -17,6 +17,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { discovery, ApiVendor } from '../../../lib/api';
+import { getTradeImage } from '../../../lib/trade-images';
 
 const PROVIDER_TYPES = [
   { label: 'All', value: '' },
@@ -51,23 +52,12 @@ const YEARS_OPTIONS = [
   { label: '15+ years', value: 15 },
 ];
 
-// Generate gradient colors from vendor name for the portfolio placeholder
-function nameToGradient(name: string): string {
-  const gradients = [
-    'from-blue-600/40 to-indigo-800/40',
-    'from-emerald-600/40 to-teal-800/40',
-    'from-amber-600/40 to-orange-800/40',
-    'from-rose-600/40 to-pink-800/40',
-    'from-violet-600/40 to-purple-800/40',
-    'from-cyan-600/40 to-sky-800/40',
-    'from-lime-600/40 to-green-800/40',
-    'from-fuchsia-600/40 to-pink-800/40',
-  ];
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return gradients[Math.abs(hash) % gradients.length];
+// Map a trade name to a slug for the trade-images lookup
+function tradeToSlug(trade: string): string {
+  return trade
+    .toLowerCase()
+    .replace(/\s+&\s+/g, '-')
+    .replace(/\s+/g, '-');
 }
 
 function getInitials(name: string): string {
@@ -91,10 +81,10 @@ function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
             size={size}
             className={
               filled
-                ? 'text-gold fill-gold'
+                ? 'text-amber-500 fill-amber-500'
                 : half
-                  ? 'text-gold fill-gold/50'
-                  : 'text-white/20'
+                  ? 'text-amber-500 fill-amber-500/50'
+                  : 'text-gray-300'
             }
           />
         );
@@ -105,23 +95,28 @@ function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
 
 // Provider listing card (horizontal row like Houzz)
 function ProviderCard({ vendor }: { vendor: ApiVendor }) {
-  const gradient = nameToGradient(vendor.name);
   const initials = getInitials(vendor.name);
   const isVerified = vendor.licenseStatus === 'ACTIVE';
+  const tradeSlug = vendor.trades.length > 0 ? tradeToSlug(vendor.trades[0]) : 'default';
+  const tradeImageUrl = getTradeImage(tradeSlug);
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl hover:border-gold/30 hover:bg-white/[0.07] transition-all duration-200 group">
+    <div className="bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 group">
       <div className="flex flex-col sm:flex-row">
-        {/* Left: Portfolio image placeholder */}
+        {/* Left: Portfolio image */}
         <div className="sm:w-48 md:w-56 lg:w-64 flex-shrink-0">
-          <div
-            className={`h-44 sm:h-full bg-gradient-to-br ${gradient} rounded-t-2xl sm:rounded-l-2xl sm:rounded-tr-none flex items-center justify-center relative overflow-hidden`}
-          >
-            <span className="text-3xl font-bold text-white/60 select-none">
-              {initials}
-            </span>
-            {/* Subtle overlay pattern */}
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_70%,rgba(255,255,255,0.05)_0%,transparent_60%)]" />
+          <div className="h-44 sm:h-full rounded-t-2xl sm:rounded-l-2xl sm:rounded-tr-none relative overflow-hidden bg-gray-100">
+            <img
+              src={tradeImageUrl}
+              alt={vendor.trades[0] || vendor.name}
+              className="w-full h-full object-cover"
+            />
+            {/* Fallback initials overlay if image fails */}
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-200 opacity-0">
+              <span className="text-3xl font-bold text-gray-400 select-none">
+                {initials}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -130,7 +125,7 @@ function ProviderCard({ vendor }: { vendor: ApiVendor }) {
           {/* Center: Provider details */}
           <div className="flex-1 min-w-0 space-y-2.5">
             {/* Company name */}
-            <h3 className="text-lg font-semibold text-white group-hover:text-gold transition-colors truncate">
+            <h3 className="text-lg font-semibold text-gray-900 group-hover:text-amber-600 transition-colors truncate">
               {vendor.name}
             </h3>
 
@@ -138,10 +133,10 @@ function ProviderCard({ vendor }: { vendor: ApiVendor }) {
             {vendor.rating !== null && (
               <div className="flex items-center gap-2 flex-wrap">
                 <StarRating rating={vendor.rating} />
-                <span className="text-sm font-semibold text-white">
+                <span className="text-sm font-semibold text-gray-900">
                   {vendor.rating.toFixed(1)}
                 </span>
-                <span className="text-sm text-white/50">
+                <span className="text-sm text-gray-500">
                   &middot; {vendor.reviewCount} Review{vendor.reviewCount !== 1 ? 's' : ''}
                 </span>
               </div>
@@ -150,8 +145,8 @@ function ProviderCard({ vendor }: { vendor: ApiVendor }) {
             {/* Verified badge */}
             {isVerified && (
               <div className="flex items-center gap-1.5">
-                <BadgeCheck size={16} className="text-emerald-400" />
-                <span className="text-sm text-emerald-400 font-medium">
+                <BadgeCheck size={16} className="text-green-600" />
+                <span className="text-sm text-green-600 font-medium">
                   Verified License
                 </span>
               </div>
@@ -159,15 +154,15 @@ function ProviderCard({ vendor }: { vendor: ApiVendor }) {
 
             {/* Specialty / Trades */}
             {vendor.trades.length > 0 && (
-              <p className="text-sm text-white/60 leading-relaxed">
-                <span className="text-white/40">Specialty:</span>{' '}
+              <p className="text-sm text-gray-500 leading-relaxed">
+                <span className="text-gray-400">Specialty:</span>{' '}
                 {vendor.trades.join(', ')}
               </p>
             )}
 
             {/* Location */}
             {vendor.location && (
-              <div className="flex items-center gap-1.5 text-white/50">
+              <div className="flex items-center gap-1.5 text-gray-500">
                 <MapPin size={14} className="flex-shrink-0" />
                 <span className="text-sm">{vendor.location.zip}</span>
               </div>
@@ -175,7 +170,7 @@ function ProviderCard({ vendor }: { vendor: ApiVendor }) {
 
             {/* Years in business */}
             {vendor.yearsInBusiness !== null && (
-              <div className="flex items-center gap-1.5 text-white/50">
+              <div className="flex items-center gap-1.5 text-gray-500">
                 <Clock size={14} className="flex-shrink-0" />
                 <span className="text-sm">
                   {vendor.yearsInBusiness} year{vendor.yearsInBusiness !== 1 ? 's' : ''} in business
@@ -186,11 +181,11 @@ function ProviderCard({ vendor }: { vendor: ApiVendor }) {
 
           {/* Right: Action buttons */}
           <div className="flex flex-row md:flex-col gap-2 md:justify-center md:items-end flex-shrink-0 md:w-40">
-            <button className="flex-1 md:w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-gold/40 text-gold rounded-xl hover:bg-gold/10 transition-colors text-sm font-medium">
+            <button className="flex-1 md:w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-amber-500 text-amber-600 rounded-xl hover:bg-amber-50 transition-colors text-sm font-medium">
               <MessageSquare size={15} />
               <span>Send Message</span>
             </button>
-            <button className="flex-1 md:w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-gold/40 text-gold rounded-xl hover:bg-gold/10 transition-colors text-sm font-medium">
+            <button className="flex-1 md:w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-amber-500 text-amber-600 rounded-xl hover:bg-amber-50 transition-colors text-sm font-medium">
               <FileText size={15} />
               <span>Request Quote</span>
             </button>
@@ -277,10 +272,10 @@ export default function DiscoveryPage() {
     <div className="min-h-screen">
       {/* Hero header */}
       <div className="px-6 md:px-8 pt-8 pb-6">
-        <h1 className="text-3xl md:text-4xl font-bold text-white mb-1">
+        <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-1">
           Home Improvement Pros Near You
         </h1>
-        <p className="text-white/50 text-base">
+        <p className="text-gray-500 text-base">
           Browse top-rated professionals, read reviews, and request quotes
         </p>
       </div>
@@ -289,31 +284,31 @@ export default function DiscoveryPage() {
       <div className="px-6 md:px-8 pb-5">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={18} />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && performSearch()}
               placeholder="Search by name, trade, or keyword..."
-              className="w-full bg-white/5 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-white placeholder-white/40 focus:outline-none focus:border-gold/50 focus:ring-1 focus:ring-gold/20 transition-all text-sm"
+              className="w-full bg-white border border-gray-300 rounded-xl pl-11 pr-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-200 transition-all text-sm"
             />
           </div>
           <div className="relative w-full sm:w-40">
-            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={16} />
+            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input
               type="text"
               value={zipCode}
               onChange={(e) => setZipCode(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && performSearch()}
               placeholder="Zip Code"
-              className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-3 text-white placeholder-white/40 focus:outline-none focus:border-gold/50 focus:ring-1 focus:ring-gold/20 transition-all text-sm"
+              className="w-full bg-white border border-gray-300 rounded-xl pl-9 pr-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-200 transition-all text-sm"
             />
           </div>
           <button
             onClick={performSearch}
             disabled={loading}
-            className="flex items-center justify-center gap-2 bg-gold text-navy font-semibold px-6 py-3 rounded-xl hover:bg-gold-dark disabled:opacity-50 transition-colors text-sm"
+            className="flex items-center justify-center gap-2 bg-amber-500 text-white font-semibold px-6 py-3 rounded-xl hover:bg-amber-600 disabled:opacity-50 transition-colors text-sm"
           >
             <Search size={16} />
             Search
@@ -330,8 +325,8 @@ export default function DiscoveryPage() {
               onClick={() => setSelectedCategory(cat)}
               className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 selectedCategory === cat
-                  ? 'bg-gold text-navy'
-                  : 'bg-white/5 text-white/70 border border-white/10 hover:bg-white/10 hover:text-white'
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-white border border-gray-300 text-gray-600 hover:border-amber-400 hover:text-gray-900'
               }`}
             >
               {cat}
@@ -345,16 +340,16 @@ export default function DiscoveryPage() {
         <div className="flex gap-8">
           {/* Filter sidebar - desktop */}
           <div className="hidden lg:block w-64 flex-shrink-0">
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-6 sticky top-8">
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-6 sticky top-8 shadow-sm">
               <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold text-white flex items-center gap-2">
+                <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
                   <SlidersHorizontal size={16} />
                   Filters
                 </h2>
                 {hasActiveFilters && (
                   <button
                     onClick={clearFilters}
-                    className="text-xs text-gold hover:text-gold-dark transition-colors"
+                    className="text-xs text-amber-600 hover:text-amber-700 transition-colors"
                   >
                     Clear all
                   </button>
@@ -363,7 +358,7 @@ export default function DiscoveryPage() {
 
               {/* Provider Type */}
               <div>
-                <h3 className="font-medium text-white/80 mb-2.5 text-sm">Provider Type</h3>
+                <h3 className="font-medium text-gray-700 mb-2.5 text-sm">Provider Type</h3>
                 <div className="space-y-1">
                   {PROVIDER_TYPES.map((type) => (
                     <button
@@ -371,8 +366,8 @@ export default function DiscoveryPage() {
                       onClick={() => setSelectedType(type.value)}
                       className={`w-full text-left px-3 py-2 rounded-lg transition-all text-sm ${
                         selectedType === type.value
-                          ? 'bg-gold/15 text-gold border border-gold/30'
-                          : 'text-white/60 hover:text-white hover:bg-white/5'
+                          ? 'bg-amber-50 text-amber-700 border border-amber-300'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                       }`}
                     >
                       {type.label}
@@ -383,7 +378,7 @@ export default function DiscoveryPage() {
 
               {/* License Status */}
               <div>
-                <h3 className="font-medium text-white/80 mb-2.5 text-sm">License Status</h3>
+                <h3 className="font-medium text-gray-700 mb-2.5 text-sm">License Status</h3>
                 <div className="space-y-1">
                   {LICENSE_OPTIONS.map((opt) => (
                     <button
@@ -391,8 +386,8 @@ export default function DiscoveryPage() {
                       onClick={() => setLicenseFilter(opt.value)}
                       className={`w-full text-left px-3 py-2 rounded-lg transition-all text-sm ${
                         licenseFilter === opt.value
-                          ? 'bg-gold/15 text-gold border border-gold/30'
-                          : 'text-white/60 hover:text-white hover:bg-white/5'
+                          ? 'bg-amber-50 text-amber-700 border border-amber-300'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                       }`}
                     >
                       {opt.label}
@@ -403,7 +398,7 @@ export default function DiscoveryPage() {
 
               {/* Min Rating */}
               <div>
-                <h3 className="font-medium text-white/80 mb-2.5 text-sm">Minimum Rating</h3>
+                <h3 className="font-medium text-gray-700 mb-2.5 text-sm">Minimum Rating</h3>
                 <div className="space-y-1">
                   {[0, 3, 3.5, 4, 4.5].map((r) => (
                     <button
@@ -411,8 +406,8 @@ export default function DiscoveryPage() {
                       onClick={() => setMinRating(r)}
                       className={`w-full text-left px-3 py-2 rounded-lg transition-all text-sm flex items-center gap-2 ${
                         minRating === r
-                          ? 'bg-gold/15 text-gold border border-gold/30'
-                          : 'text-white/60 hover:text-white hover:bg-white/5'
+                          ? 'bg-amber-50 text-amber-700 border border-amber-300'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                       }`}
                     >
                       {r === 0 ? (
@@ -430,7 +425,7 @@ export default function DiscoveryPage() {
 
               {/* Years Experience */}
               <div>
-                <h3 className="font-medium text-white/80 mb-2.5 text-sm">Years Experience</h3>
+                <h3 className="font-medium text-gray-700 mb-2.5 text-sm">Years Experience</h3>
                 <div className="space-y-1">
                   {YEARS_OPTIONS.map((opt) => (
                     <button
@@ -438,8 +433,8 @@ export default function DiscoveryPage() {
                       onClick={() => setMinYears(opt.value)}
                       className={`w-full text-left px-3 py-2 rounded-lg transition-all text-sm ${
                         minYears === opt.value
-                          ? 'bg-gold/15 text-gold border border-gold/30'
-                          : 'text-white/60 hover:text-white hover:bg-white/5'
+                          ? 'bg-amber-50 text-amber-700 border border-amber-300'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                       }`}
                     >
                       {opt.label}
@@ -452,7 +447,7 @@ export default function DiscoveryPage() {
               <button
                 onClick={performSearch}
                 disabled={loading}
-                className="w-full bg-gold text-navy font-semibold py-2.5 rounded-xl hover:bg-gold-dark disabled:opacity-50 transition-colors text-sm"
+                className="w-full bg-amber-500 text-white font-semibold py-2.5 rounded-xl hover:bg-amber-600 disabled:opacity-50 transition-colors text-sm"
               >
                 {loading ? 'Searching...' : 'Apply Filters'}
               </button>
@@ -463,12 +458,12 @@ export default function DiscoveryPage() {
           <div className="lg:hidden fixed bottom-6 right-6 z-50">
             <button
               onClick={() => setShowMobileFilters(true)}
-              className="flex items-center gap-2 bg-gold text-navy font-semibold px-5 py-3 rounded-full shadow-lg shadow-gold/20 hover:bg-gold-dark transition-colors"
+              className="flex items-center gap-2 bg-amber-500 text-white font-semibold px-5 py-3 rounded-full shadow-lg shadow-amber-200 hover:bg-amber-600 transition-colors"
             >
               <Filter size={18} />
               Filters
               {hasActiveFilters && (
-                <span className="bg-navy text-gold text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                <span className="bg-white text-amber-600 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
                   !
                 </span>
               )}
@@ -480,19 +475,19 @@ export default function DiscoveryPage() {
             <div className="lg:hidden fixed inset-0 z-50 flex">
               {/* Backdrop */}
               <div
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                className="absolute inset-0 bg-black/40 backdrop-blur-sm"
                 onClick={() => setShowMobileFilters(false)}
               />
               {/* Drawer */}
-              <div className="relative ml-auto w-full max-w-sm bg-navy border-l border-white/10 h-full overflow-y-auto p-6 space-y-6">
+              <div className="relative ml-auto w-full max-w-sm bg-white border-l border-gray-200 h-full overflow-y-auto p-6 space-y-6">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                     <SlidersHorizontal size={18} />
                     Filters
                   </h2>
                   <button
                     onClick={() => setShowMobileFilters(false)}
-                    className="text-white/60 hover:text-white p-1"
+                    className="text-gray-400 hover:text-gray-600 p-1"
                   >
                     <X size={22} />
                   </button>
@@ -500,7 +495,7 @@ export default function DiscoveryPage() {
 
                 {/* Provider Type */}
                 <div>
-                  <h3 className="font-medium text-white/80 mb-2.5 text-sm">Provider Type</h3>
+                  <h3 className="font-medium text-gray-700 mb-2.5 text-sm">Provider Type</h3>
                   <div className="space-y-1">
                     {PROVIDER_TYPES.map((type) => (
                       <button
@@ -508,8 +503,8 @@ export default function DiscoveryPage() {
                         onClick={() => setSelectedType(type.value)}
                         className={`w-full text-left px-3 py-2 rounded-lg transition-all text-sm ${
                           selectedType === type.value
-                            ? 'bg-gold/15 text-gold border border-gold/30'
-                            : 'text-white/60 hover:text-white hover:bg-white/5'
+                            ? 'bg-amber-50 text-amber-700 border border-amber-300'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                         }`}
                       >
                         {type.label}
@@ -520,7 +515,7 @@ export default function DiscoveryPage() {
 
                 {/* License Status */}
                 <div>
-                  <h3 className="font-medium text-white/80 mb-2.5 text-sm">License Status</h3>
+                  <h3 className="font-medium text-gray-700 mb-2.5 text-sm">License Status</h3>
                   <div className="space-y-1">
                     {LICENSE_OPTIONS.map((opt) => (
                       <button
@@ -528,8 +523,8 @@ export default function DiscoveryPage() {
                         onClick={() => setLicenseFilter(opt.value)}
                         className={`w-full text-left px-3 py-2 rounded-lg transition-all text-sm ${
                           licenseFilter === opt.value
-                            ? 'bg-gold/15 text-gold border border-gold/30'
-                            : 'text-white/60 hover:text-white hover:bg-white/5'
+                            ? 'bg-amber-50 text-amber-700 border border-amber-300'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                         }`}
                       >
                         {opt.label}
@@ -540,7 +535,7 @@ export default function DiscoveryPage() {
 
                 {/* Min Rating */}
                 <div>
-                  <h3 className="font-medium text-white/80 mb-2.5 text-sm">Minimum Rating</h3>
+                  <h3 className="font-medium text-gray-700 mb-2.5 text-sm">Minimum Rating</h3>
                   <div className="space-y-1">
                     {[0, 3, 3.5, 4, 4.5].map((r) => (
                       <button
@@ -548,8 +543,8 @@ export default function DiscoveryPage() {
                         onClick={() => setMinRating(r)}
                         className={`w-full text-left px-3 py-2 rounded-lg transition-all text-sm flex items-center gap-2 ${
                           minRating === r
-                            ? 'bg-gold/15 text-gold border border-gold/30'
-                            : 'text-white/60 hover:text-white hover:bg-white/5'
+                            ? 'bg-amber-50 text-amber-700 border border-amber-300'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                         }`}
                       >
                         {r === 0 ? (
@@ -567,7 +562,7 @@ export default function DiscoveryPage() {
 
                 {/* Years Experience */}
                 <div>
-                  <h3 className="font-medium text-white/80 mb-2.5 text-sm">Years Experience</h3>
+                  <h3 className="font-medium text-gray-700 mb-2.5 text-sm">Years Experience</h3>
                   <div className="space-y-1">
                     {YEARS_OPTIONS.map((opt) => (
                       <button
@@ -575,8 +570,8 @@ export default function DiscoveryPage() {
                         onClick={() => setMinYears(opt.value)}
                         className={`w-full text-left px-3 py-2 rounded-lg transition-all text-sm ${
                           minYears === opt.value
-                            ? 'bg-gold/15 text-gold border border-gold/30'
-                            : 'text-white/60 hover:text-white hover:bg-white/5'
+                            ? 'bg-amber-50 text-amber-700 border border-amber-300'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                         }`}
                       >
                         {opt.label}
@@ -587,13 +582,13 @@ export default function DiscoveryPage() {
 
                 {/* Zip Code */}
                 <div>
-                  <h3 className="font-medium text-white/80 mb-2.5 text-sm">Zip Code</h3>
+                  <h3 className="font-medium text-gray-700 mb-2.5 text-sm">Zip Code</h3>
                   <input
                     type="text"
                     value={zipCode}
                     onChange={(e) => setZipCode(e.target.value)}
                     placeholder="e.g. 95128"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/40 focus:outline-none focus:border-gold/50"
+                    className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-amber-500"
                   />
                 </div>
 
@@ -604,14 +599,14 @@ export default function DiscoveryPage() {
                       setShowMobileFilters(false);
                     }}
                     disabled={loading}
-                    className="flex-1 bg-gold text-navy font-semibold py-2.5 rounded-xl hover:bg-gold-dark disabled:opacity-50 transition-colors text-sm"
+                    className="flex-1 bg-amber-500 text-white font-semibold py-2.5 rounded-xl hover:bg-amber-600 disabled:opacity-50 transition-colors text-sm"
                   >
                     Apply
                   </button>
                   {hasActiveFilters && (
                     <button
                       onClick={clearFilters}
-                      className="px-4 py-2.5 border border-white/20 text-white/70 rounded-xl hover:text-white transition-colors text-sm"
+                      className="px-4 py-2.5 border border-gray-300 text-gray-600 rounded-xl hover:text-gray-900 transition-colors text-sm"
                     >
                       Clear
                     </button>
@@ -625,15 +620,15 @@ export default function DiscoveryPage() {
           <div className="flex-1 min-w-0">
             {loading ? (
               <div className="flex flex-col items-center justify-center py-20 gap-3">
-                <Loader2 className="animate-spin text-gold" size={36} />
-                <p className="text-white/40 text-sm">Finding professionals near you...</p>
+                <Loader2 className="animate-spin text-amber-500" size={36} />
+                <p className="text-gray-400 text-sm">Finding professionals near you...</p>
               </div>
             ) : (
               <>
                 {/* Results count */}
                 {searched && (
-                  <p className="text-white/50 text-sm mb-5">
-                    <span className="text-white font-medium">{filteredVendors.length}</span>{' '}
+                  <p className="text-gray-500 text-sm mb-5">
+                    <span className="text-gray-900 font-medium">{filteredVendors.length}</span>{' '}
                     professional{filteredVendors.length !== 1 ? 's' : ''} found
                     {zipCode ? ` near ${zipCode}` : ' near you'}
                   </p>
@@ -649,17 +644,17 @@ export default function DiscoveryPage() {
                 {/* Empty state */}
                 {filteredVendors.length === 0 && searched && (
                   <div className="text-center py-20">
-                    <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Search size={28} className="text-white/20" />
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Search size={28} className="text-gray-300" />
                     </div>
-                    <p className="text-white/60 text-lg font-medium">No professionals found</p>
-                    <p className="text-white/40 text-sm mt-2 max-w-sm mx-auto">
+                    <p className="text-gray-600 text-lg font-medium">No professionals found</p>
+                    <p className="text-gray-400 text-sm mt-2 max-w-sm mx-auto">
                       Try broadening your search criteria or adjusting the filters to see more results.
                     </p>
                     {hasActiveFilters && (
                       <button
                         onClick={clearFilters}
-                        className="mt-4 px-5 py-2 border border-gold/40 text-gold rounded-xl hover:bg-gold/10 transition-colors text-sm font-medium"
+                        className="mt-4 px-5 py-2 border border-amber-500 text-amber-600 rounded-xl hover:bg-amber-50 transition-colors text-sm font-medium"
                       >
                         Clear all filters
                       </button>

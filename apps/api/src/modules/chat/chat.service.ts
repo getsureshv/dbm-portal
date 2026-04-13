@@ -206,9 +206,7 @@ export class ChatService {
           timeline: scopeDocument.timeline,
           milestones: scopeDocument.milestones,
           specialConditions: scopeDocument.specialConditions,
-          preferredStartDate: scopeDocument.preferredStartDate
-            ? scopeDocument.preferredStartDate.toISOString()
-            : null,
+          preferredStartDate: scopeDocument.preferredStartDate || null,
           siteConstraints: scopeDocument.siteConstraints,
           aestheticPreferences: scopeDocument.aestheticPreferences,
         },

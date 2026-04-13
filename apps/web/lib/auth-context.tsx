@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { auth as authApi } from './api';
+import { handleRedirectResult, firebaseSignOut, isFirebaseConfigured } from './firebase';
 
 export interface User {
   id: string;
@@ -19,10 +20,12 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   error: string | null;
+  firebaseReady: boolean;
   login: (firebaseIdToken: string) => Promise<void>;
   devLogin: (email: string, uid: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  clearError: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -46,10 +49,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Check session on mount
+  // Check session on mount + handle Firebase redirect result
   useEffect(() => {
-    refreshUser().finally(() => setLoading(false));
-  }, [refreshUser]);
+    async function init() {
+      // First check if we have an existing session
+      await refreshUser();
+
+      // Then check for Firebase redirect result (from signInWithRedirect)
+      if (isFirebaseConfigured) {
+        try {
+          const idToken = await handleRedirectResult();
+          if (idToken) {
+            const data = await authApi.createSession(idToken);
+            setUser(data.user);
+            if (!data.user.onboardingComplete) {
+              router.push('/onboarding');
+            } else {
+              router.push('/dashboard');
+            }
+          }
+        } catch {
+          // No redirect result — normal page load
+        }
+      }
+
+      setLoading(false);
+    }
+
+    init();
+  }, [refreshUser, router]);
 
   // Redirect unauthenticated users away from protected pages
   useEffect(() => {
@@ -85,6 +113,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
+      // Sign out from Firebase
+      await firebaseSignOut();
+    } catch {
+      // ignore
+    }
+    try {
       await authApi.logout();
     } catch {
       // ignore — cookie might already be cleared
@@ -93,8 +127,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.replace('/login');
   }, [router]);
 
+  const clearError = useCallback(() => setError(null), []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, error, login, devLogin, logout, refreshUser }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        error,
+        firebaseReady: isFirebaseConfigured,
+        login,
+        devLogin,
+        logout,
+        refreshUser,
+        clearError,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

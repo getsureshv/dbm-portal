@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
+import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronRight, ChevronDown, Loader2, AlertCircle, Pencil } from 'lucide-react';
 import { useAuth } from '../../../../lib/auth-context';
 import { projects as projectsApi, ApiProject } from '../../../../lib/api';
 
@@ -29,6 +29,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const [project, setProject] = useState<ApiProject | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     projectsApi
@@ -288,32 +289,120 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
 
           {/* Scope Fields */}
           {project.scopeDocument && project.scopeDocument.completenessPercent > 0 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-4">
               {[
-                { label: 'Project Scope', value: project.scopeDocument.projectScope },
-                { label: 'Dimensions & Specifications', value: project.scopeDocument.dimensions },
-                { label: 'Materials & Grade', value: project.scopeDocument.materialGrade },
-                { label: 'Timeline', value: project.scopeDocument.timeline },
-                { label: 'Milestones', value: project.scopeDocument.milestones },
-                { label: 'Special Conditions', value: project.scopeDocument.specialConditions },
-                { label: 'Preferred Start Date', value: project.scopeDocument.preferredStartDate },
-                { label: 'Site Constraints', value: project.scopeDocument.siteConstraints },
-                { label: 'Aesthetic Preferences', value: project.scopeDocument.aestheticPreferences },
+                { key: 'projectScope', label: 'Project Scope', value: project.scopeDocument.projectScope },
+                { key: 'dimensions', label: 'Dimensions & Specifications', value: project.scopeDocument.dimensions },
+                { key: 'materialGrade', label: 'Materials & Grade', value: project.scopeDocument.materialGrade },
+                { key: 'timeline', label: 'Timeline', value: project.scopeDocument.timeline },
+                { key: 'milestones', label: 'Milestones', value: project.scopeDocument.milestones },
+                { key: 'specialConditions', label: 'Special Conditions', value: project.scopeDocument.specialConditions },
+                { key: 'preferredStartDate', label: 'Preferred Start Date', value: project.scopeDocument.preferredStartDate },
+                { key: 'siteConstraints', label: 'Site Constraints', value: project.scopeDocument.siteConstraints },
+                { key: 'aestheticPreferences', label: 'Aesthetic Preferences', value: project.scopeDocument.aestheticPreferences },
               ]
                 .filter((s) => s.value)
-                .map((section) => (
-                  <div
-                    key={section.label}
-                    className="bg-white/5 border border-white/10 rounded-2xl p-6"
+                .map((section) => {
+                  const isExpanded = expandedSections.has(section.key);
+                  const needsTruncation = (section.value?.length || 0) > 120;
+
+                  return (
+                    <div
+                      key={section.key}
+                      className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:border-white/20 transition-colors"
+                    >
+                      {/* Clickable Header */}
+                      <button
+                        onClick={() =>
+                          setExpandedSections((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(section.key)) {
+                              next.delete(section.key);
+                            } else {
+                              next.add(section.key);
+                            }
+                            return next;
+                          })
+                        }
+                        className="w-full flex items-center justify-between p-6 pb-0 text-left group"
+                      >
+                        <h3 className="text-sm font-semibold text-gold uppercase tracking-wide">
+                          {section.label}
+                        </h3>
+                        <div className="flex items-center gap-2">
+                          <Link
+                            href={`/projects/${params.id}/scope`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-white/30 hover:text-gold transition-colors opacity-0 group-hover:opacity-100"
+                            title="Edit in AI Scope Architect"
+                          >
+                            <Pencil size={14} />
+                          </Link>
+                          {needsTruncation && (
+                            <ChevronDown
+                              size={16}
+                              className={`text-white/40 transition-transform duration-200 ${
+                                isExpanded ? 'rotate-180' : ''
+                              }`}
+                            />
+                          )}
+                        </div>
+                      </button>
+
+                      {/* Content */}
+                      <div className="p-6 pt-3">
+                        <p className="text-white/80 text-sm leading-relaxed whitespace-pre-wrap">
+                          {isExpanded || !needsTruncation
+                            ? section.value
+                            : section.value?.slice(0, 120) + '...'}
+                        </p>
+                        {needsTruncation && !isExpanded && (
+                          <button
+                            onClick={() =>
+                              setExpandedSections((prev) => new Set(prev).add(section.key))
+                            }
+                            className="text-gold/70 hover:text-gold text-xs mt-2 transition-colors"
+                          >
+                            Show more
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+              {/* Expand All / Collapse All */}
+              {[
+                project.scopeDocument.projectScope,
+                project.scopeDocument.dimensions,
+                project.scopeDocument.materialGrade,
+                project.scopeDocument.timeline,
+                project.scopeDocument.milestones,
+                project.scopeDocument.specialConditions,
+                project.scopeDocument.preferredStartDate,
+                project.scopeDocument.siteConstraints,
+                project.scopeDocument.aestheticPreferences,
+              ].filter(Boolean).length > 2 && (
+                <div className="flex justify-center pt-2">
+                  <button
+                    onClick={() => {
+                      const allKeys = [
+                        'projectScope', 'dimensions', 'materialGrade', 'timeline',
+                        'milestones', 'specialConditions', 'preferredStartDate',
+                        'siteConstraints', 'aestheticPreferences',
+                      ];
+                      if (expandedSections.size > 0) {
+                        setExpandedSections(new Set());
+                      } else {
+                        setExpandedSections(new Set(allKeys));
+                      }
+                    }}
+                    className="text-sm text-white/40 hover:text-gold transition-colors"
                   >
-                    <h3 className="text-sm font-semibold text-gold mb-3 uppercase tracking-wide">
-                      {section.label}
-                    </h3>
-                    <p className="text-white/80 text-sm leading-relaxed whitespace-pre-wrap">
-                      {section.value}
-                    </p>
-                  </div>
-                ))}
+                    {expandedSections.size > 0 ? 'Collapse all' : 'Expand all sections'}
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="bg-white/5 border border-dashed border-white/20 rounded-2xl p-12 text-center">

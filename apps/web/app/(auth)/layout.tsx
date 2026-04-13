@@ -1,8 +1,9 @@
 'use client';
 
-import { LayoutDashboard, FolderOpen, Compass, MessageSquare, LogOut, Loader2 } from 'lucide-react';
+import { LayoutDashboard, FolderOpen, Compass, MessageSquare, LogOut, Loader2, Building2, Search, Briefcase } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useMemo } from 'react';
 import { useAuth } from '../../lib/auth-context';
 
 export default function AuthLayout({
@@ -13,12 +14,27 @@ export default function AuthLayout({
   const pathname = usePathname();
   const { user, loading, logout } = useAuth();
 
-  const navItems = [
-    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/projects', label: 'Projects', icon: FolderOpen },
-    { href: '/discovery', label: 'Discovery', icon: Compass },
-    { href: '/chat', label: 'Chat', icon: MessageSquare },
-  ];
+  const navItems = useMemo(() => {
+    const role = user?.role;
+
+    if (role === 'PROVIDER') {
+      return [
+        { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { href: '/opportunities', label: 'Opportunities', icon: Search },
+        { href: '/chat', label: 'Chat', icon: MessageSquare },
+        { href: '/profile', label: 'Profile', icon: Building2 },
+      ];
+    }
+
+    // OWNER (default)
+    return [
+      { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { href: '/projects', label: 'Projects', icon: Briefcase },
+      { href: '/discovery', label: 'Discovery', icon: Compass },
+      { href: '/chat', label: 'Chat', icon: MessageSquare },
+      { href: '/profile', label: 'Profile', icon: Building2 },
+    ];
+  }, [user?.role]);
 
   const isActive = (href: string) => pathname.startsWith(href);
 

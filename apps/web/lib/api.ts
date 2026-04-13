@@ -154,6 +154,49 @@ export const discovery = {
   },
 };
 
+// ─── Provider Profile ─────────────────────────────────────
+
+export interface ApiProviderProfile {
+  id: string;
+  email: string;
+  role: 'OWNER' | 'PROVIDER' | 'ADMIN' | null;
+  providerType: 'PROFESSIONAL' | 'SUPPLIER' | 'FREIGHT' | null;
+  name: string | null;
+  phone: string | null;
+  profile: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    companyName: string;
+    phone: string;
+    phone2: string | null;
+    email: string;
+    website: string | null;
+    address: Record<string, string> | null;
+    yearsInBusiness?: number | null;
+    yearsInProfession?: number | null;
+    licenseNumber?: string | null;
+    licenseStatus: string;
+    styleOfWork?: string[];
+    materialTypes?: string[];
+    serviceTypes?: string[];
+    servicesProvided?: string[];
+    awards?: string[];
+    tradeCategory: { id: string; label: string } | null;
+    tradeName: { id: string; name: string; slug: string } | null;
+  } | null;
+}
+
+export const providers = {
+  getMe: () => request<ApiProviderProfile>('/providers/me'),
+
+  updateMe: (data: Record<string, unknown>) =>
+    request<ApiProviderProfile>('/providers/me', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+};
+
 // ─── Uploads ───────────────────────────────────────────────
 
 export const uploads = {

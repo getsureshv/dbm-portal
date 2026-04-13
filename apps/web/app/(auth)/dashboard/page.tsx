@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart3, Clock, Zap, Plus, Users, Sparkles, Loader2 } from 'lucide-react';
+import { BarChart3, Clock, Zap, Plus, Users, Sparkles, Loader2, Building2, Search, FileText, Settings } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../../lib/auth-context';
@@ -48,6 +48,80 @@ export default function DashboardPage() {
     { icon: Zap, label: 'AI Scopes Done', value: String(scopeCount), color: 'from-purple-400 to-purple-600' },
   ];
 
+  // PROVIDER dashboard
+  if (user?.role === 'PROVIDER') {
+    const providerStats = [
+      { icon: Building2, label: 'My Profile', value: user.name || 'Incomplete', color: 'from-gold to-gold/70' },
+      { icon: Search, label: 'Available Opportunities', value: '0', color: 'from-blue-400 to-blue-600' },
+      { icon: FileText, label: 'Bids Submitted', value: '0', color: 'from-purple-400 to-purple-600' },
+    ];
+
+    return (
+      <div className="p-8 space-y-8">
+        {/* Welcome Header */}
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">Welcome back, {displayName}</h1>
+          <p className="text-white/60">Here&apos;s your provider dashboard</p>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {providerStats.map((stat, index) => {
+            const Icon = stat.icon;
+            return (
+              <div
+                key={index}
+                className="bg-white/5 border border-white/10 rounded-2xl p-6 hover:border-white/20 transition-colors"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className={`p-3 rounded-lg bg-gradient-to-br ${stat.color} bg-opacity-20`}>
+                    <Icon className="text-gold" size={24} />
+                  </div>
+                </div>
+                <p className="text-white/60 text-sm mb-1">{stat.label}</p>
+                <p className="text-3xl font-bold text-white">{stat.value}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Recent Activity */}
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-8">
+          <h2 className="text-xl font-bold text-white mb-6">Recent Activity</h2>
+          <div className="text-center py-8">
+            <p className="text-white/60">No recent activity</p>
+          </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Link
+            href="/profile"
+            className="bg-gold text-navy font-semibold p-6 rounded-2xl hover:bg-gold/90 transition-colors flex items-center gap-3 group"
+          >
+            <Building2 size={24} />
+            <span>View Profile</span>
+          </Link>
+          <Link
+            href="/opportunities"
+            className="bg-white/5 border border-white/10 text-white font-semibold p-6 rounded-2xl hover:border-gold/30 hover:bg-gold/5 transition-colors flex items-center gap-3 group"
+          >
+            <Search size={24} />
+            <span>Browse Opportunities</span>
+          </Link>
+          <Link
+            href="/profile"
+            className="bg-white/5 border border-white/10 text-white font-semibold p-6 rounded-2xl hover:border-gold/30 hover:bg-gold/5 transition-colors flex items-center gap-3 group"
+          >
+            <Settings size={24} />
+            <span>Update Trades</span>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // OWNER dashboard (default)
   return (
     <div className="p-8 space-y-8">
       {/* Welcome Header */}

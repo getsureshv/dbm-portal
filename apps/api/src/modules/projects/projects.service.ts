@@ -107,6 +107,46 @@ export class ProjectsService {
     return projects;
   }
 
+  /**
+   * Get a single opportunity (public view for providers).
+   * Returns project + scope data + owner name. No ownership check.
+   */
+  async getOpportunity(id: string) {
+    this.validateUuid(id);
+    const project = await this.prisma.project.findUnique({
+      where: { id, deletedAt: null },
+      include: {
+        scopeDocument: {
+          select: {
+            completenessPercent: true,
+            status: true,
+            projectScope: true,
+            dimensions: true,
+            materialGrade: true,
+            timeline: true,
+            milestones: true,
+            specialConditions: true,
+            preferredStartDate: true,
+            siteConstraints: true,
+            aestheticPreferences: true,
+          },
+        },
+        owner: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Opportunity not found');
+    }
+
+    return project;
+  }
+
   async getProject(id: string, userId: string) {
     this.validateUuid(id);
     const project = await this.prisma.project.findUnique({

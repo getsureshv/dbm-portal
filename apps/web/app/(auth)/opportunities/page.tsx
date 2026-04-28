@@ -2,6 +2,7 @@
 
 import { Search, SlidersHorizontal, HardHat, MapPin, Calendar, FileText, Sparkles, Loader2, ChevronRight } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { opportunities as opportunitiesApi, ApiOpportunity } from '../../../lib/api';
 
 const PROJECT_TYPES = [
@@ -24,6 +25,7 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export default function OpportunitiesPage() {
+  const router = useRouter();
   const [projectType, setProjectType] = useState('');
   const [zipCode, setZipCode] = useState('');
   const [projects, setProjects] = useState<ApiOpportunity[]>([]);
@@ -215,7 +217,10 @@ export default function OpportunitiesPage() {
                   <span className="text-xs text-gray-400 uppercase tracking-wide">
                     {project.status}
                   </span>
-                  <button className="inline-flex items-center gap-1 text-sm text-amber-600 hover:text-amber-700 font-medium transition-colors">
+                  <button
+                    onClick={() => router.push(`/opportunities/${project.id}`)}
+                    className="inline-flex items-center gap-1 text-sm text-amber-600 hover:text-amber-700 font-medium transition-colors"
+                  >
                     View Details
                     <ChevronRight size={14} />
                   </button>

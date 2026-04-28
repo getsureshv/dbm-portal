@@ -4,13 +4,13 @@ import { PrismaService } from '../../common/prisma.service';
 export interface SearchVendorsParams {
   type: 'professional' | 'supplier' | 'freight';
   category?: string;
+  query?: string;
   zip?: string;
   radiusMiles?: number;
   licenseStatus?: string;
   minYearsInBusiness?: number;
   cursor?: string;
   limit: number;
-  userId: string;
 }
 
 export interface VendorCard {
@@ -30,6 +30,108 @@ export interface VendorCard {
 export class DiscoveryService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * List all trade categories with their trade names.
+   */
+  async listTrades() {
+    const categories = await this.prisma.tradeCategory.findMany({
+      include: {
+        trades: {
+          select: { id: true, name: true, slug: true },
+          orderBy: { name: 'asc' },
+        },
+      },
+      orderBy: { label: 'asc' },
+    });
+
+    return categories.map((cat) => ({
+      id: cat.id,
+      name: cat.name,
+      label: cat.label,
+      trades: cat.trades,
+    }));
+  }
+
+  async getVendorDetail(profileId: string, type: string) {
+    const includeRelations = {
+      tradeName: { select: { name: true, slug: true } },
+      tradeCategory: { select: { label: true } },
+      user: { select: { id: true, name: true, email: true, createdAt: true } },
+    };
+
+    let profile: any = null;
+
+    if (type === 'professional') {
+      profile = await this.prisma.professionalProfile.findUnique({
+        where: { id: profileId },
+        include: includeRelations,
+      });
+    } else if (type === 'supplier') {
+      profile = await this.prisma.supplierProfile.findUnique({
+        where: { id: profileId },
+        include: includeRelations,
+      });
+    } else if (type === 'freight') {
+      profile = await this.prisma.freightProfile.findUnique({
+        where: { id: profileId },
+        include: includeRelations,
+      });
+    }
+
+    if (!profile) {
+      // Try all types if not found
+      profile = await this.prisma.professionalProfile.findUnique({
+        where: { id: profileId },
+        include: includeRelations,
+      });
+      if (profile) type = 'professional';
+
+      if (!profile) {
+        profile = await this.prisma.supplierProfile.findUnique({
+          where: { id: profileId },
+          include: includeRelations,
+        });
+        if (profile) type = 'supplier';
+      }
+
+      if (!profile) {
+        profile = await this.prisma.freightProfile.findUnique({
+          where: { id: profileId },
+          include: includeRelations,
+        });
+        if (profile) type = 'freight';
+      }
+    }
+
+    if (!profile) return null;
+
+    return {
+      id: profile.id,
+      providerType: type,
+      companyName: profile.companyName || null,
+      firstName: profile.firstName || null,
+      lastName: profile.lastName || null,
+      email: profile.email || null,
+      phone: profile.contactNumber1 || null,
+      phone2: profile.contactNumber2 || null,
+      website: profile.website || null,
+      address: profile.address || null,
+      yearsInBusiness: profile.yearsInBusiness ?? null,
+      yearsInProfession: profile.yearsInProfession ?? null,
+      licenseNumber: profile.licenseNumber || null,
+      licenseStatus: profile.licenseStatus || 'NOT_APPLICABLE',
+      styleOfWork: profile.styleOfWork || profile.materialTypes || profile.serviceTypes || [],
+      awards: profile.awards || [],
+      tradeName: profile.tradeName
+        ? { name: profile.tradeName.name, slug: profile.tradeName.slug }
+        : null,
+      tradeCategory: profile.tradeCategory
+        ? { label: profile.tradeCategory.label }
+        : null,
+      memberSince: profile.user?.createdAt || profile.createdAt,
+    };
+  }
+
   async searchVendors(
     params: SearchVendorsParams,
   ): Promise<{
@@ -40,6 +142,7 @@ export class DiscoveryService {
     const {
       type,
       category,
+      query,
       licenseStatus,
       minYearsInBusiness,
       cursor,
@@ -60,6 +163,16 @@ export class DiscoveryService {
     // Filter by trade name slug
     if (category) {
       where.tradeName = { slug: category };
+    }
+
+    // Text search: match against company name, first/last name, or trade name
+    if (query) {
+      where.OR = [
+        { companyName: { contains: query, mode: 'insensitive' } },
+        { firstName: { contains: query, mode: 'insensitive' } },
+        { lastName: { contains: query, mode: 'insensitive' } },
+        { tradeName: { name: { contains: query, mode: 'insensitive' } } },
+      ];
     }
 
     // Cursor-based pagination

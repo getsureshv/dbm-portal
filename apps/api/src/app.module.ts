@@ -9,6 +9,7 @@ import { DiscoveryModule } from './modules/discovery/discovery.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { ProvidersModule } from './modules/providers/providers.module';
+import { DocumentsModule } from './modules/documents/documents.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -29,6 +30,7 @@ import { HealthController } from './health.controller';
     UploadsModule,
     ChatModule,
     ProvidersModule,
+    DocumentsModule,
   ],
   controllers: [HealthController],
 })

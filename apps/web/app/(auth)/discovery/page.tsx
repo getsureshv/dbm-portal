@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Search,
   Star,
@@ -15,8 +16,11 @@ import {
   Loader2,
   SlidersHorizontal,
   ChevronDown,
+  ChevronRight,
+  Globe,
+  ExternalLink,
 } from 'lucide-react';
-import { discovery, ApiVendor } from '../../../lib/api';
+import { discovery, ApiVendor, ApiWebVendor } from '../../../lib/api';
 import { getTradeImage } from '../../../lib/trade-images';
 
 const PROVIDER_TYPES = [
@@ -27,16 +31,19 @@ const PROVIDER_TYPES = [
 ];
 
 const CATEGORY_PILLS = [
-  'All',
-  'General Contractors',
-  'Kitchen & Bath',
-  'Electricians',
-  'Plumbers',
-  'HVAC',
-  'Roofers',
-  'Painters',
-  'Flooring',
-  'Landscaping',
+  { label: 'All', slug: '' },
+  { label: 'General Contractor', slug: 'general-contractor' },
+  { label: 'Electrician', slug: 'electrician' },
+  { label: 'Plumber', slug: 'plumber' },
+  { label: 'HVAC', slug: 'hvac' },
+  { label: 'Roofer', slug: 'roofer' },
+  { label: 'Painter', slug: 'painter' },
+  { label: 'Flooring', slug: 'flooring-contractor' },
+  { label: 'Landscape', slug: 'landscape' },
+  { label: 'Architect', slug: 'architect' },
+  { label: 'Cabinets', slug: 'cabinets' },
+  { label: 'Pool', slug: 'pool-contractor' },
+  { label: 'Concrete', slug: 'concrete' },
 ];
 
 const LICENSE_OPTIONS = [
@@ -94,14 +101,17 @@ function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
 }
 
 // Provider listing card (horizontal row like Houzz)
-function ProviderCard({ vendor }: { vendor: ApiVendor }) {
+function ProviderCard({ vendor, onClick }: { vendor: ApiVendor; onClick: () => void }) {
   const initials = getInitials(vendor.name);
   const isVerified = vendor.licenseStatus === 'ACTIVE';
   const tradeSlug = vendor.trades.length > 0 ? tradeToSlug(vendor.trades[0]) : 'default';
   const tradeImageUrl = getTradeImage(tradeSlug);
 
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 group">
+    <div
+      onClick={onClick}
+      className="bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 group cursor-pointer"
+    >
       <div className="flex flex-col sm:flex-row">
         {/* Left: Portfolio image */}
         <div className="sm:w-48 md:w-56 lg:w-64 flex-shrink-0">
@@ -124,10 +134,16 @@ function ProviderCard({ vendor }: { vendor: ApiVendor }) {
         <div className="flex-1 flex flex-col md:flex-row p-5 gap-4">
           {/* Center: Provider details */}
           <div className="flex-1 min-w-0 space-y-2.5">
-            {/* Company name */}
-            <h3 className="text-lg font-semibold text-gray-900 group-hover:text-amber-600 transition-colors truncate">
-              {vendor.name}
-            </h3>
+            {/* Title row + DBM source badge */}
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="text-lg font-semibold text-gray-900 group-hover:text-amber-600 transition-colors truncate">
+                {vendor.name}
+              </h3>
+              <span className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-full text-xs font-semibold text-amber-700">
+                <BadgeCheck size={11} />
+                DBM Pro
+              </span>
+            </div>
 
             {/* Rating row */}
             {vendor.rating !== null && (
@@ -181,11 +197,17 @@ function ProviderCard({ vendor }: { vendor: ApiVendor }) {
 
           {/* Right: Action buttons */}
           <div className="flex flex-row md:flex-col gap-2 md:justify-center md:items-end flex-shrink-0 md:w-40">
-            <button className="flex-1 md:w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-amber-500 text-amber-600 rounded-xl hover:bg-amber-50 transition-colors text-sm font-medium">
-              <MessageSquare size={15} />
-              <span>Send Message</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); onClick(); }}
+              className="flex-1 md:w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors text-sm font-medium"
+            >
+              <span>View Profile</span>
+              <ChevronRight size={15} />
             </button>
-            <button className="flex-1 md:w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-amber-500 text-amber-600 rounded-xl hover:bg-amber-50 transition-colors text-sm font-medium">
+            <button
+              onClick={(e) => e.stopPropagation()}
+              className="flex-1 md:w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-amber-500 text-amber-600 rounded-xl hover:bg-amber-50 transition-colors text-sm font-medium"
+            >
               <FileText size={15} />
               <span>Request Quote</span>
             </button>
@@ -196,10 +218,88 @@ function ProviderCard({ vendor }: { vendor: ApiVendor }) {
   );
 }
 
+// External web vendor card — visually distinct (lighter chrome, "external" badge)
+function WebVendorCard({ vendor }: { vendor: ApiWebVendor }) {
+  const initials = getInitials(vendor.name);
+  return (
+    <a
+      href={vendor.website || '#'}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="bg-white border border-dashed border-gray-300 rounded-2xl shadow-sm hover:shadow-md hover:border-gray-400 transition-all duration-200 group block"
+    >
+      <div className="flex flex-col sm:flex-row">
+        {/* Left: Image / initials */}
+        <div className="sm:w-48 md:w-56 flex-shrink-0">
+          <div className="h-40 sm:h-full rounded-t-2xl sm:rounded-l-2xl sm:rounded-tr-none relative overflow-hidden bg-gray-100">
+            {vendor.imageUrl ? (
+              <img
+                src={vendor.imageUrl}
+                alt={vendor.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+                <span className="text-3xl font-bold text-gray-400 select-none">
+                  {initials}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Details */}
+        <div className="flex-1 p-5 space-y-2.5">
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="text-lg font-semibold text-gray-900 group-hover:text-amber-600 transition-colors">
+              {vendor.name}
+            </h3>
+            <span className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 border border-gray-200 rounded-full text-xs font-medium text-gray-600">
+              <Globe size={11} />
+              {vendor.sourceLabel}
+            </span>
+          </div>
+
+          {vendor.rating !== null && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <StarRating rating={vendor.rating} />
+              <span className="text-sm font-semibold text-gray-900">
+                {vendor.rating.toFixed(1)}
+              </span>
+              <span className="text-sm text-gray-500">
+                &middot; {vendor.reviewCount} Review{vendor.reviewCount !== 1 ? 's' : ''}
+              </span>
+            </div>
+          )}
+
+          {vendor.categories.length > 0 && (
+            <p className="text-sm text-gray-500 leading-relaxed">
+              {vendor.categories.slice(0, 3).join(', ')}
+            </p>
+          )}
+
+          {vendor.address && (
+            <div className="flex items-center gap-1.5 text-gray-500">
+              <MapPin size={14} className="flex-shrink-0" />
+              <span className="text-sm truncate">{vendor.address}</span>
+            </div>
+          )}
+
+          <div className="pt-1 flex items-center gap-1.5 text-amber-600 text-sm font-medium">
+            <span>View on {vendor.sourceLabel}</span>
+            <ExternalLink size={13} />
+          </div>
+        </div>
+      </div>
+    </a>
+  );
+}
+
 export default function DiscoveryPage() {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedCategory, setSelectedCategory] = useState('');
   const [zipCode, setZipCode] = useState('');
   const [licenseFilter, setLicenseFilter] = useState('');
   const [minRating, setMinRating] = useState(0);
@@ -209,16 +309,52 @@ export default function DiscoveryPage() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [total, setTotal] = useState(0);
+  const [webVendors, setWebVendors] = useState<ApiWebVendor[]>([]);
+  const [webLoading, setWebLoading] = useState(false);
+  const [webConfigured, setWebConfigured] = useState<boolean | null>(null);
+  const [webMessage, setWebMessage] = useState<string | undefined>();
+  const [webProvider, setWebProvider] = useState<string | null>(null);
 
   const performSearch = useCallback(async () => {
     setLoading(true);
+    // Kick off web search in parallel only when ZIP provided
+    const zip = zipCode.trim();
+    if (zip) {
+      setWebLoading(true);
+      discovery
+        .searchWeb({
+          query: searchQuery || undefined,
+          zip,
+          category: selectedCategory || undefined,
+          limit: 10,
+        })
+        .then((res) => {
+          setWebVendors(res.vendors);
+          setWebConfigured(res.configured);
+          setWebMessage(res.message);
+          setWebProvider(res.provider);
+        })
+        .catch(() => {
+          setWebVendors([]);
+          setWebConfigured(false);
+          setWebMessage('Web search is temporarily unavailable.');
+        })
+        .finally(() => setWebLoading(false));
+    } else {
+      setWebVendors([]);
+      setWebConfigured(null);
+      setWebMessage(undefined);
+      setWebProvider(null);
+    }
+
     try {
       const params: Record<string, string> = {};
       if (selectedType) params.type = selectedType;
-      if (selectedCategory !== 'All')
-        params.category = selectedCategory.toLowerCase().replace(/\s+&\s+/g, '-').replace(/\s+/g, '-');
-      if (zipCode) params.zip = zipCode;
+      if (selectedCategory) params.category = selectedCategory;
+      if (zip) params.zip = zip;
       if (searchQuery) params.query = searchQuery;
+      if (licenseFilter) params.licenseStatus = licenseFilter;
+      if (minYears > 0) params.minYearsInBusiness = String(minYears);
 
       // Default to professional if no type set
       if (!params.type) params.type = 'professional';
@@ -234,7 +370,7 @@ export default function DiscoveryPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedType, selectedCategory, zipCode, searchQuery]);
+  }, [selectedType, selectedCategory, zipCode, searchQuery, licenseFilter, minYears]);
 
   // Initial load
   useEffect(() => {
@@ -243,7 +379,7 @@ export default function DiscoveryPage() {
 
   const clearFilters = () => {
     setSelectedType('');
-    setSelectedCategory('All');
+    setSelectedCategory('');
     setZipCode('');
     setSearchQuery('');
     setLicenseFilter('');
@@ -253,7 +389,7 @@ export default function DiscoveryPage() {
 
   const hasActiveFilters =
     selectedType !== '' ||
-    selectedCategory !== 'All' ||
+    selectedCategory !== '' ||
     zipCode !== '' ||
     licenseFilter !== '' ||
     minRating > 0 ||
@@ -321,15 +457,15 @@ export default function DiscoveryPage() {
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
           {CATEGORY_PILLS.map((cat) => (
             <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
+              key={cat.slug || 'all'}
+              onClick={() => setSelectedCategory(cat.slug)}
               className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
-                selectedCategory === cat
+                selectedCategory === cat.slug
                   ? 'bg-amber-500 text-white'
                   : 'bg-white border border-gray-300 text-gray-600 hover:border-amber-400 hover:text-gray-900'
               }`}
             >
-              {cat}
+              {cat.label}
             </button>
           ))}
         </div>
@@ -625,39 +761,101 @@ export default function DiscoveryPage() {
               </div>
             ) : (
               <>
-                {/* Results count */}
+                {/* DBM Verified Pros section header */}
                 {searched && (
-                  <p className="text-gray-500 text-sm mb-5">
-                    <span className="text-gray-900 font-medium">{filteredVendors.length}</span>{' '}
-                    professional{filteredVendors.length !== 1 ? 's' : ''} found
-                    {zipCode ? ` near ${zipCode}` : ' near you'}
-                  </p>
+                  <div className="mb-5">
+                    <div className="flex items-center gap-2 mb-1">
+                      <BadgeCheck size={18} className="text-amber-600" />
+                      <h2 className="text-lg font-semibold text-gray-900">
+                        DBM Verified Pros
+                      </h2>
+                    </div>
+                    <p className="text-gray-500 text-sm">
+                      <span className="text-gray-900 font-medium">{filteredVendors.length}</span>{' '}
+                      professional{filteredVendors.length !== 1 ? 's' : ''} found
+                      {zipCode ? ` near ${zipCode}` : ' near you'}
+                    </p>
+                  </div>
                 )}
 
                 {/* Provider listing cards */}
                 <div className="space-y-4">
                   {filteredVendors.map((vendor) => (
-                    <ProviderCard key={vendor.id} vendor={vendor} />
+                    <ProviderCard
+                      key={vendor.id}
+                      vendor={vendor}
+                      onClick={() => router.push(`/discovery/${vendor.id}?type=${vendor.providerType}`)}
+                    />
                   ))}
                 </div>
 
-                {/* Empty state */}
+                {/* Empty state for DB results */}
                 {filteredVendors.length === 0 && searched && (
-                  <div className="text-center py-20">
-                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Search size={28} className="text-gray-300" />
+                  <div className="text-center py-12 bg-white border border-dashed border-gray-200 rounded-2xl">
+                    <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <Search size={24} className="text-gray-300" />
                     </div>
-                    <p className="text-gray-600 text-lg font-medium">No professionals found</p>
-                    <p className="text-gray-400 text-sm mt-2 max-w-sm mx-auto">
-                      Try broadening your search criteria or adjusting the filters to see more results.
+                    <p className="text-gray-600 text-base font-medium">No DBM pros matched yet</p>
+                    <p className="text-gray-400 text-sm mt-1.5 max-w-sm mx-auto">
+                      Try broadening your filters{zipCode ? ' — we also searched the web below' : ''}.
                     </p>
                     {hasActiveFilters && (
                       <button
                         onClick={clearFilters}
-                        className="mt-4 px-5 py-2 border border-amber-500 text-amber-600 rounded-xl hover:bg-amber-50 transition-colors text-sm font-medium"
+                        className="mt-3 px-4 py-2 border border-amber-500 text-amber-600 rounded-xl hover:bg-amber-50 transition-colors text-sm font-medium"
                       >
                         Clear all filters
                       </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Found on the web section — only when ZIP is supplied */}
+                {zipCode && (
+                  <div className="mt-10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Globe size={18} className="text-gray-500" />
+                      <h2 className="text-lg font-semibold text-gray-900">
+                        Found on the web · ZIP {zipCode}
+                      </h2>
+                    </div>
+                    <p className="text-gray-500 text-sm mb-5">
+                      External listings — not yet vetted by DBM.
+                      {webProvider && webConfigured && ` Powered by ${
+                        webProvider === 'yelp'
+                          ? 'Yelp'
+                          : webProvider === 'serpapi'
+                            ? 'Google via SerpAPI'
+                            : webProvider === 'google-places'
+                              ? 'Google Places'
+                              : webProvider === 'foursquare'
+                                ? 'Foursquare'
+                                : 'OpenStreetMap'
+                      }.`}
+                    </p>
+
+                    {webLoading ? (
+                      <div className="flex items-center gap-2 py-8 text-gray-400 text-sm">
+                        <Loader2 className="animate-spin" size={16} />
+                        Searching the web...
+                      </div>
+                    ) : webConfigured === false ? (
+                      <div className="bg-gray-50 border border-dashed border-gray-300 rounded-2xl px-5 py-6 text-sm text-gray-600">
+                        <p className="font-medium text-gray-700 mb-1">Web search not configured</p>
+                        <p className="text-gray-500">
+                          {webMessage || 'Set a YELP_API_KEY in apps/api/.env to enable external provider results.'}
+                        </p>
+                      </div>
+                    ) : webVendors.length === 0 ? (
+                      <div className="bg-gray-50 border border-dashed border-gray-300 rounded-2xl px-5 py-6 text-sm text-gray-500">
+                        No external matches found for this ZIP.
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {webVendors.map((v) => (
+                          <WebVendorCard key={v.id} vendor={v} />
+                        ))}
+                      </div>
                     )}
                   </div>
                 )}

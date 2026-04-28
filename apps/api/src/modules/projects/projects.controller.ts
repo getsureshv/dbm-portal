@@ -8,13 +8,16 @@ import {
   Param,
   Query,
   Req,
+  Res,
   UseGuards,
   HttpCode,
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Response } from 'express';
 import { AuthGuard } from '../auth/auth.guard';
 import { ProjectsService } from './projects.service';
+import { ScopePdfService } from './scope-pdf.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 
@@ -23,7 +26,10 @@ import { UpdateProjectDto } from './dto/update-project.dto';
 @UseGuards(AuthGuard)
 @ApiBearerAuth()
 export class ProjectsController {
-  constructor(private projectsService: ProjectsService) {}
+  constructor(
+    private projectsService: ProjectsService,
+    private scopePdfService: ScopePdfService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new project' })
@@ -49,6 +55,36 @@ export class ProjectsController {
     @Query('zipCode') zipCode?: string,
   ) {
     return this.projectsService.listOpportunities({ type, zipCode });
+  }
+
+  @Get('opportunities/:id')
+  @ApiOperation({ summary: 'Get a single opportunity detail (provider view)' })
+  async getOpportunity(@Param('id') id: string) {
+    return this.projectsService.getOpportunity(id);
+  }
+
+  @Post(':id/scope/generate-pdf')
+  @ApiOperation({ summary: 'Generate a Scope of Work PDF and upload to S3' })
+  async generateScopePdf(@Req() req: any, @Param('id') id: string) {
+    const userId = req.userId;
+    return this.scopePdfService.generatePdf(id, userId);
+  }
+
+  @Get(':id/scope/pdf')
+  @ApiOperation({ summary: 'Download the generated Scope of Work PDF' })
+  async downloadScopePdf(
+    @Req() req: any,
+    @Res() res: Response,
+    @Param('id') id: string,
+  ) {
+    const userId = req.userId;
+    const { buffer, filename } = await this.scopePdfService.getPdf(id, userId);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
   }
 
   @Get(':id')

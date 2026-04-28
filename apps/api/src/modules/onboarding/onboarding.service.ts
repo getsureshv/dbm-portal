@@ -97,29 +97,24 @@ export class OnboardingService {
           );
         }
 
+        const professionalData = {
+          firstName: providerData.firstName,
+          lastName: providerData.lastName,
+          companyName: providerData.companyName,
+          contactNumber1: providerData.contactNumber1,
+          contactNumber2: providerData.contactNumber2 || null,
+          email: providerData.email,
+          website: providerData.website || null,
+          address: providerData.address || undefined,
+          yearsInBusiness: providerData.yearsInBusiness ?? null,
+          licenseNumber: providerData.licenseNumber || null,
+          licenseStatus: providerData.licenseStatus || 'NOT_APPLICABLE',
+          tradeNameId: providerData.tradeNameId || null,
+        };
         await this.prisma.professionalProfile.upsert({
           where: { userId },
-          create: {
-            userId,
-            firstName: providerData.firstName,
-            lastName: providerData.lastName,
-            companyName: providerData.companyName,
-            contactNumber1: providerData.contactNumber1,
-            contactNumber2: providerData.contactNumber2 || null,
-            email: providerData.email,
-            licenseStatus: providerData.licenseStatus || 'NOT_APPLICABLE',
-            tradeNameId: providerData.tradeNameId || null,
-          },
-          update: {
-            firstName: providerData.firstName,
-            lastName: providerData.lastName,
-            companyName: providerData.companyName,
-            contactNumber1: providerData.contactNumber1,
-            contactNumber2: providerData.contactNumber2 || null,
-            email: providerData.email,
-            licenseStatus: providerData.licenseStatus || 'NOT_APPLICABLE',
-            tradeNameId: providerData.tradeNameId || null,
-          },
+          create: { userId, ...professionalData },
+          update: professionalData,
         });
       } else if (providerType === 'SUPPLIER') {
         // Validate required fields for SUPPLIER provider
@@ -135,27 +130,20 @@ export class OnboardingService {
           );
         }
 
+        const supplierData = {
+          firstName: providerData.firstName,
+          lastName: providerData.lastName,
+          companyName: providerData.companyName,
+          contactNumber1: providerData.contactNumber1,
+          contactNumber2: providerData.contactNumber2 || null,
+          email: providerData.email,
+          website: providerData.website || null,
+          address: providerData.address || undefined,
+        };
         await this.prisma.supplierProfile.upsert({
           where: { userId },
-          create: {
-            userId,
-            firstName: providerData.firstName,
-            lastName: providerData.lastName,
-            companyName: providerData.companyName,
-            contactNumber1: providerData.contactNumber1,
-            contactNumber2: providerData.contactNumber2 || null,
-            email: providerData.email,
-            website: providerData.website || null,
-          },
-          update: {
-            firstName: providerData.firstName,
-            lastName: providerData.lastName,
-            companyName: providerData.companyName,
-            contactNumber1: providerData.contactNumber1,
-            contactNumber2: providerData.contactNumber2 || null,
-            email: providerData.email,
-            website: providerData.website || null,
-          },
+          create: { userId, ...supplierData },
+          update: supplierData,
         });
       } else if (providerType === 'FREIGHT') {
         // Validate required fields for FREIGHT provider
@@ -171,27 +159,21 @@ export class OnboardingService {
           );
         }
 
+        const freightData = {
+          firstName: providerData.firstName,
+          lastName: providerData.lastName,
+          companyName: providerData.companyName,
+          contactNumber1: providerData.contactNumber1,
+          contactNumber2: providerData.contactNumber2 || null,
+          email: providerData.email,
+          website: providerData.website || null,
+          address: providerData.address || undefined,
+          licenseStatus: providerData.licenseStatus || 'NOT_APPLICABLE',
+        };
         await this.prisma.freightProfile.upsert({
           where: { userId },
-          create: {
-            userId,
-            firstName: providerData.firstName,
-            lastName: providerData.lastName,
-            companyName: providerData.companyName,
-            contactNumber1: providerData.contactNumber1,
-            contactNumber2: providerData.contactNumber2 || null,
-            email: providerData.email,
-            licenseStatus: providerData.licenseStatus || 'NOT_APPLICABLE',
-          },
-          update: {
-            firstName: providerData.firstName,
-            lastName: providerData.lastName,
-            companyName: providerData.companyName,
-            contactNumber1: providerData.contactNumber1,
-            contactNumber2: providerData.contactNumber2 || null,
-            email: providerData.email,
-            licenseStatus: providerData.licenseStatus || 'NOT_APPLICABLE',
-          },
+          create: { userId, ...freightData },
+          update: freightData,
         });
       } else {
         throw new BadRequestException(

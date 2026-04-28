@@ -1,6 +1,7 @@
 /**
  * API client for the DBM backend.
- * Calls are proxied via Next.js rewrites to NestJS at localhost:4000.
+ * Calls go to /api on the same origin and are proxied to the NestJS backend
+ * via Next.js rewrites (see next.config.js → NEXT_PUBLIC_API_URL).
  */
 
 const BASE = '/api';

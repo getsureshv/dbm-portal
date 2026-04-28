@@ -4,8 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "nest start --watch",
-    "build": "nest build",
+    "build": "prisma generate && nest build",
     "start": "node dist/main",
+    "start:prod": "prisma db push --accept-data-loss && node dist/main",
+    "postinstall": "prisma generate",
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "test": "jest",

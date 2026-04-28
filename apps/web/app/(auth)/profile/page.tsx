@@ -20,7 +20,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../../../lib/auth-context';
-import { providers, ApiProviderProfile } from '../../../lib/api';
+import { providers, discovery, ApiProviderProfile, ApiTradeCategory } from '../../../lib/api';
 
 type EditingSection = 'company' | 'contact' | 'license' | 'trades' | 'areas' | null;
 
@@ -32,18 +32,28 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [editingSection, setEditingSection] = useState<EditingSection>(null);
   const [formData, setFormData] = useState<Record<string, unknown>>({});
+  const [tradeCategories, setTradeCategories] = useState<ApiTradeCategory[]>([]);
 
   const fetchProfile = useCallback(async () => {
+    // Don't fetch if user hasn't completed onboarding (role not set)
+    if (!user?.role) {
+      setLoading(false);
+      return;
+    }
     try {
       setError(null);
-      const data = await providers.getMe();
+      const [data, trades] = await Promise.all([
+        providers.getMe(),
+        discovery.listTrades().catch(() => [] as ApiTradeCategory[]),
+      ]);
       setProfile(data);
+      setTradeCategories(trades);
     } catch (err: any) {
       setError(err.message || 'Failed to load profile');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.role]);
 
   useEffect(() => {
     fetchProfile();
@@ -81,9 +91,27 @@ export default function ProfilePage() {
       });
     } else if (section === 'trades') {
       const currentTrades = p?.styleOfWork || p?.materialTypes || p?.serviceTypes || [];
+      // Find the current category and trade IDs from the trade categories list
+      let selectedCategoryId = '';
+      let selectedTradeId = '';
+      if (p?.tradeName?.name) {
+        for (const cat of tradeCategories) {
+          const found = cat.trades.find((t) => t.name === p.tradeName?.name);
+          if (found) {
+            selectedCategoryId = cat.id;
+            selectedTradeId = found.id;
+            break;
+          }
+        }
+      } else if (p?.tradeCategory?.label) {
+        const foundCat = tradeCategories.find((c) => c.label === p.tradeCategory?.label);
+        if (foundCat) selectedCategoryId = foundCat.id;
+      }
       setFormData({
         trades: currentTrades,
         newTrade: '',
+        selectedCategoryId,
+        selectedTradeId,
       });
     } else if (section === 'areas') {
       setFormData({
@@ -122,6 +150,8 @@ export default function ProfilePage() {
           updateData.licenseNumber = formData.licenseNumber;
       } else if (editingSection === 'trades') {
         updateData.trades = formData.trades;
+        if (formData.selectedTradeId) updateData.tradeNameId = formData.selectedTradeId;
+        if (formData.selectedCategoryId) updateData.tradeCategoryId = formData.selectedCategoryId;
       } else if (editingSection === 'areas') {
         updateData.address = formData.address;
       }
@@ -434,76 +464,121 @@ export default function ProfilePage() {
       <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
         <SectionHeader title="Trades & Services" icon={Wrench} section="trades" />
         {editingSection === 'trades' ? (
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              {(formData.trades as string[] || []).map((trade, i) => (
-                <span
-                  key={i}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 text-sm rounded-full border border-amber-200"
-                >
-                  {trade}
-                  <button
-                    onClick={() => removeTrade(i)}
-                    className="text-amber-400 hover:text-amber-700 transition-colors"
-                  >
-                    <X size={12} />
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={(formData.newTrade as string) || ''}
-                onChange={(e) => updateFormField('newTrade', e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addTrade();
-                  }
+          <div className="space-y-5">
+            {/* Trade Category Dropdown */}
+            <div className="space-y-1.5">
+              <label className="text-xs text-gray-500 uppercase tracking-wider">Trade Category</label>
+              <select
+                value={(formData.selectedCategoryId as string) || ''}
+                onChange={(e) => {
+                  updateFormField('selectedCategoryId', e.target.value);
+                  updateFormField('selectedTradeId', ''); // reset trade when category changes
                 }}
-                placeholder="Add a trade or service..."
-                className="flex-1 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 transition-colors"
-              />
-              <button
-                onClick={addTrade}
-                className="px-4 py-2 bg-amber-50 text-amber-700 text-sm font-medium rounded-lg border border-amber-200 hover:bg-amber-100 transition-colors"
+                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-amber-500 transition-colors appearance-none"
               >
-                Add
-              </button>
+                <option value="">Select a category...</option>
+                {tradeCategories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.label}</option>
+                ))}
+              </select>
             </div>
-            {p?.tradeCategory && (
-              <div className="pt-2 border-t border-gray-200">
-                <FieldDisplay label="Trade Category" value={p.tradeCategory.label} />
-              </div>
-            )}
-            {p?.tradeName && (
-              <FieldDisplay label="Trade Name" value={p.tradeName.name} />
-            )}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {trades.length > 0 ? (
+
+            {/* Trade Name Dropdown — filtered by selected category */}
+            <div className="space-y-1.5">
+              <label className="text-xs text-gray-500 uppercase tracking-wider">Trade / Specialty</label>
+              <select
+                value={(formData.selectedTradeId as string) || ''}
+                onChange={(e) => updateFormField('selectedTradeId', e.target.value)}
+                disabled={!(formData.selectedCategoryId as string)}
+                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-amber-500 transition-colors appearance-none disabled:bg-gray-50 disabled:text-gray-400"
+              >
+                <option value="">Select a trade...</option>
+                {tradeCategories
+                  .find((c) => c.id === (formData.selectedCategoryId as string))
+                  ?.trades.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+              </select>
+            </div>
+
+            {/* Style of Work / Services tags */}
+            <div className="space-y-2">
+              <label className="text-xs text-gray-500 uppercase tracking-wider">
+                Services Offered
+              </label>
               <div className="flex flex-wrap gap-2">
-                {trades.map((trade, i) => (
+                {(formData.trades as string[] || []).map((trade, i) => (
                   <span
                     key={i}
-                    className="px-3 py-1.5 bg-amber-50 text-amber-700 text-sm rounded-full border border-amber-200"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 text-sm rounded-full border border-amber-200"
                   >
                     {trade}
+                    <button
+                      onClick={() => removeTrade(i)}
+                      className="text-amber-400 hover:text-amber-700 transition-colors"
+                    >
+                      <X size={12} />
+                    </button>
                   </span>
                 ))}
               </div>
-            ) : (
-              <p className="text-sm text-gray-400 italic">No trades or services listed</p>
-            )}
-            {p?.tradeCategory && (
-              <div className="pt-3 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FieldDisplay label="Trade Category" value={p.tradeCategory.label} icon={Award} />
-                {p.tradeName && (
-                  <FieldDisplay label="Trade Name" value={p.tradeName.name} icon={Wrench} />
-                )}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={(formData.newTrade as string) || ''}
+                  onChange={(e) => updateFormField('newTrade', e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addTrade();
+                    }
+                  }}
+                  placeholder="Add a service (e.g., residential, commercial)..."
+                  className="flex-1 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 transition-colors"
+                />
+                <button
+                  onClick={addTrade}
+                  className="px-4 py-2 bg-amber-50 text-amber-700 text-sm font-medium rounded-lg border border-amber-200 hover:bg-amber-100 transition-colors"
+                >
+                  Add
+                </button>
               </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Trade Category & Name display */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FieldDisplay
+                label="Trade Category"
+                value={p?.tradeCategory?.label}
+                icon={Award}
+              />
+              <FieldDisplay
+                label="Trade / Specialty"
+                value={p?.tradeName?.name}
+                icon={Wrench}
+              />
+            </div>
+
+            {/* Services */}
+            {trades.length > 0 && (
+              <div className="pt-3 border-t border-gray-200">
+                <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Services Offered</p>
+                <div className="flex flex-wrap gap-2">
+                  {trades.map((trade, i) => (
+                    <span
+                      key={i}
+                      className="px-3 py-1.5 bg-amber-50 text-amber-700 text-sm rounded-full border border-amber-200 capitalize"
+                    >
+                      {trade}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {trades.length === 0 && !p?.tradeCategory && !p?.tradeName && (
+              <p className="text-sm text-gray-400 italic">No trades or services listed</p>
             )}
           </div>
         )}

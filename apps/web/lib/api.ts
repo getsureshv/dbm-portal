@@ -61,6 +61,7 @@ export interface ApiDocument {
   category: string;
   filename: string;
   s3Key: string;
+  extractedText: string | null;
   uploadedById: string;
   createdAt: string;
 }
@@ -141,6 +142,55 @@ export const projects = {
     request<ApiProject>(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
   delete: (id: string) => request<void>(`/projects/${id}`, { method: 'DELETE' }),
+
+  addDocument: (projectId: string, data: { s3Key: string; filename: string; category: string }) =>
+    request<ApiDocument>(`/projects/${projectId}/documents`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  generateScopePdf: (projectId: string) =>
+    request<{ downloadUrl: string; pdfS3Key: string }>(`/projects/${projectId}/scope/generate-pdf`, {
+      method: 'POST',
+    }),
+};
+
+// ─── Uploads ──────────────────────────────────────────────
+
+export const uploads = {
+  presign: (data: { kind: string; contentType: string; contentLength: number }) =>
+    request<{ uploadUrl: string; key: string; expiresAt: string }>('/uploads/presign', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
+// ─── Documents ────────────────────────────────────────────
+
+export const documents = {
+  scan: (documentId: string) =>
+    request<{ id: string; filename: string; extractedText: string }>(`/documents/${documentId}/scan`, {
+      method: 'POST',
+    }),
+
+  getText: (documentId: string) =>
+    request<{ id: string; filename: string; extractedText: string | null }>(`/documents/${documentId}/text`),
+
+  convertToScope: (documentId: string) =>
+    request<{
+      isScopeDocument: boolean;
+      confidence: number;
+      reason?: string;
+      scope?: {
+        id: string;
+        projectId: string;
+        completenessPercent: number;
+        filledFields: string[];
+      };
+    }>(`/documents/${documentId}/convert-to-scope`, { method: 'POST' }),
+
+  delete: (documentId: string) =>
+    request<void>(`/documents/${documentId}`, { method: 'DELETE' }),
 };
 
 // ─── Opportunities ────────────────────────────────────────
@@ -165,6 +215,33 @@ export interface ApiOpportunity {
   } | null;
 }
 
+export interface ApiOpportunityDetail {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  zipCode: string;
+  createdAt: string;
+  updatedAt: string;
+  owner: {
+    id: string;
+    name: string | null;
+  };
+  scopeDocument: {
+    completenessPercent: number;
+    status: string;
+    projectScope: string | null;
+    dimensions: string | null;
+    materialGrade: string | null;
+    timeline: string | null;
+    milestones: string | null;
+    specialConditions: string | null;
+    preferredStartDate: string | null;
+    siteConstraints: string | null;
+    aestheticPreferences: string | null;
+  } | null;
+}
+
 export const opportunities = {
   list: (params?: { type?: string; zipCode?: string }) => {
     const qs = new URLSearchParams();
@@ -175,9 +252,66 @@ export const opportunities = {
       `/projects/opportunities${queryStr ? `?${queryStr}` : ''}`,
     );
   },
+
+  get: (id: string) =>
+    request<ApiOpportunityDetail>(`/projects/opportunities/${id}`),
 };
 
 // ─── Discovery ─────────────────────────────────────────────
+
+export interface ApiVendorDetail {
+  id: string;
+  providerType: string;
+  companyName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  phone: string | null;
+  phone2: string | null;
+  website: string | null;
+  address: Record<string, string> | null;
+  yearsInBusiness: number | null;
+  yearsInProfession: number | null;
+  licenseNumber: string | null;
+  licenseStatus: string;
+  styleOfWork: string[];
+  awards: string[];
+  tradeName: { name: string; slug: string } | null;
+  tradeCategory: { label: string } | null;
+  memberSince: string;
+}
+
+export interface ApiTradeCategory {
+  id: string;
+  name: string;
+  label: string;
+  trades: { id: string; name: string; slug: string }[];
+}
+
+export interface ApiWebVendor {
+  id: string;
+  name: string;
+  rating: number | null;
+  reviewCount: number;
+  phone: string | null;
+  website: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  distanceMiles: number | null;
+  categories: string[];
+  imageUrl: string | null;
+  source: 'yelp' | 'serpapi' | 'google-places' | 'overpass' | 'foursquare';
+  sourceLabel: string;
+}
+
+export interface ApiWebSearchResult {
+  vendors: ApiWebVendor[];
+  provider: 'yelp' | 'serpapi' | 'google-places' | 'overpass' | 'foursquare' | null;
+  configured: boolean;
+  message?: string;
+}
 
 export const discovery = {
   search: (params: Record<string, string>) => {
@@ -186,6 +320,22 @@ export const discovery = {
       `/discovery/vendors?${qs}`,
     );
   },
+
+  searchWeb: (params: { query?: string; zip: string; category?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params.query) qs.set('query', params.query);
+    qs.set('zip', params.zip);
+    if (params.category) qs.set('category', params.category);
+    if (params.limit) qs.set('limit', String(params.limit));
+    return request<ApiWebSearchResult>(`/discovery/web-vendors?${qs.toString()}`);
+  },
+
+  getVendor: (id: string, type?: string) => {
+    const qs = type ? `?type=${type}` : '';
+    return request<ApiVendorDetail>(`/discovery/vendors/${id}${qs}`);
+  },
+
+  listTrades: () => request<ApiTradeCategory[]>('/discovery/trades'),
 };
 
 // ─── Provider Profile ─────────────────────────────────────
@@ -231,12 +381,3 @@ export const providers = {
     }),
 };
 
-// ─── Uploads ───────────────────────────────────────────────
-
-export const uploads = {
-  presign: (data: { kind: string; contentType: string; contentLength: number }) =>
-    request<{ uploadUrl: string; key: string; expiresAt: string }>('/uploads/presign', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-};

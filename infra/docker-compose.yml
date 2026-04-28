@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: dbm_secret
       POSTGRES_DB: dbm_portal
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql

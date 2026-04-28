@@ -72,6 +72,42 @@ export default function AuthLayout({
     );
   }
 
+  // Public access for /discovery: render minimal public chrome instead of redirecting.
+  // AuthContext PUBLIC_PATHS keeps unauthenticated users on the page.
+  const isPublicDiscovery = !user && pathname.startsWith('/discovery');
+  if (isPublicDiscovery) {
+    return (
+      <div className="flex flex-col h-screen bg-slate-50">
+        <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shrink-0">
+          <Link href="/" className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-navy flex items-center justify-center">
+              <span className="text-gold font-bold text-sm">D</span>
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-xl font-bold text-gray-900 tracking-tight">DBM</span>
+              <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Beta</span>
+            </div>
+          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/login"
+              className="text-sm text-gray-700 hover:text-gray-900 px-3 py-2 transition-colors"
+            >
+              Sign in
+            </Link>
+            <Link
+              href="/onboarding"
+              className="text-sm font-semibold bg-amber-500 text-white px-4 py-2 rounded-lg hover:bg-amber-600 transition-colors"
+            >
+              Sign up
+            </Link>
+          </div>
+        </header>
+        <main className="flex-1 overflow-auto bg-slate-50">{children}</main>
+      </div>
+    );
+  }
+
   // AuthContext handles redirect to /login if no user
   if (!user) {
     return (

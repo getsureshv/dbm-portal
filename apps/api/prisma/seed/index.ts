@@ -1,4 +1,4 @@
-import { PrismaClient, TradeGroup } from '@prisma/client';
+import { PrismaClient, TradeGroup, LicenseStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -181,6 +181,121 @@ async function main() {
   });
 
   console.log(`✓ Created provider user: ${providerUser.email}`);
+
+  // 3b. Seed Additional Providers for Discovery
+  const additionalProviders = [
+    { uid: 'test-pro-2', email: 'electrician@test.com', first: 'Sarah', last: 'Johnson', company: 'Spark Electric Co.', phone: '(555) 200-1001', tradeSlug: 'electrician', years: 12, license: 'ACTIVE', style: ['residential', 'commercial'] },
+    { uid: 'test-pro-3', email: 'plumber@test.com', first: 'James', last: 'Wilson', company: 'Wilson Plumbing', phone: '(555) 200-1002', tradeSlug: 'plumber', years: 22, license: 'ACTIVE', style: ['residential', 'emergency'] },
+    { uid: 'test-pro-4', email: 'hvac@test.com', first: 'Maria', last: 'Garcia', company: 'Cool Air HVAC Solutions', phone: '(555) 200-1003', tradeSlug: 'hvac', years: 8, license: 'ACTIVE', style: ['residential', 'commercial', 'industrial'] },
+    { uid: 'test-pro-5', email: 'roofer@test.com', first: 'Robert', last: 'Brown', company: 'TopShield Roofing', phone: '(555) 200-1004', tradeSlug: 'roofer', years: 15, license: 'ACTIVE', style: ['residential', 'commercial'] },
+    { uid: 'test-pro-6', email: 'painter@test.com', first: 'Emily', last: 'Davis', company: 'Perfect Finish Painting', phone: '(555) 200-1005', tradeSlug: 'painter', years: 6, license: 'ACTIVE', style: ['interior', 'exterior', 'residential'] },
+    { uid: 'test-pro-7', email: 'flooring@test.com', first: 'Michael', last: 'Lee', company: 'Lee Flooring Pros', phone: '(555) 200-1006', tradeSlug: 'flooring-contractor', years: 10, license: 'ACTIVE', style: ['hardwood', 'tile', 'vinyl'] },
+    { uid: 'test-pro-8', email: 'concrete@test.com', first: 'David', last: 'Martinez', company: 'Solid Ground Concrete', phone: '(555) 200-1007', tradeSlug: 'concrete', years: 20, license: 'ACTIVE', style: ['foundations', 'driveways', 'stamped'] },
+    { uid: 'test-pro-9', email: 'landscape@test.com', first: 'Jennifer', last: 'Taylor', company: 'Green Spaces Landscaping', phone: '(555) 200-1008', tradeSlug: 'landscape', years: 9, license: 'ACTIVE', style: ['design', 'hardscape', 'irrigation'] },
+    { uid: 'test-pro-10', email: 'architect@test.com', first: 'William', last: 'Anderson', company: 'Anderson Architecture Studio', phone: '(555) 200-1009', tradeSlug: 'architect', years: 25, license: 'ACTIVE', style: ['residential', 'commercial', 'sustainable'] },
+    { uid: 'test-pro-11', email: 'cabinets@test.com', first: 'Lisa', last: 'Thomas', company: 'Custom Cabinet Works', phone: '(555) 200-1010', tradeSlug: 'cabinets', years: 14, license: 'ACTIVE', style: ['custom', 'kitchen', 'bathroom'] },
+    { uid: 'test-pro-12', email: 'pool@test.com', first: 'Daniel', last: 'White', company: 'Blue Wave Pools', phone: '(555) 200-1011', tradeSlug: 'pool-contractor', years: 11, license: 'ACTIVE', style: ['inground', 'renovation', 'spa'] },
+  ];
+
+  for (const prov of additionalProviders) {
+    const trade = await prisma.tradeName.findUnique({
+      where: { slug: prov.tradeSlug },
+      include: { category: true },
+    });
+
+    await prisma.user.upsert({
+      where: { firebaseUid: prov.uid },
+      update: {},
+      create: {
+        firebaseUid: prov.uid,
+        email: prov.email,
+        role: 'PROVIDER',
+        providerType: 'PROFESSIONAL',
+        onboardingComplete: true,
+        name: `${prov.first} ${prov.last}`,
+        phone: prov.phone,
+        verificationStatus: true,
+        professionalProfile: {
+          create: {
+            firstName: prov.first,
+            lastName: prov.last,
+            companyName: prov.company,
+            contactNumber1: prov.phone,
+            email: prov.email,
+            licenseStatus: prov.license as LicenseStatus,
+            styleOfWork: prov.style,
+            yearsInBusiness: prov.years,
+            ...(trade
+              ? { tradeNameId: trade.id, tradeCategoryId: trade.category.id }
+              : {}),
+          },
+        },
+      },
+    });
+  }
+
+  console.log(`✓ Seeded ${additionalProviders.length} additional providers`);
+
+  // Seed a couple of supplier profiles
+  const lumberTrade = await prisma.tradeName.findUnique({
+    where: { slug: 'lumber' },
+    include: { category: true },
+  });
+
+  await prisma.user.upsert({
+    where: { firebaseUid: 'test-supplier-1' },
+    update: {},
+    create: {
+      firebaseUid: 'test-supplier-1',
+      email: 'lumber@test.com',
+      role: 'PROVIDER',
+      providerType: 'SUPPLIER',
+      onboardingComplete: true,
+      name: 'Texas Lumber Supply',
+      phone: '(555) 300-1001',
+      verificationStatus: true,
+      supplierProfile: {
+        create: {
+          firstName: 'Tom',
+          lastName: 'Henderson',
+          companyName: 'Texas Lumber Supply Co.',
+          contactNumber1: '(555) 300-1001',
+          email: 'lumber@test.com',
+          materialTypes: ['lumber', 'plywood', 'trim', 'framing'],
+          ...(lumberTrade
+            ? { tradeNameId: lumberTrade.id, tradeCategoryId: lumberTrade.category.id }
+            : {}),
+        },
+      },
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { firebaseUid: 'test-supplier-2' },
+    update: {},
+    create: {
+      firebaseUid: 'test-supplier-2',
+      email: 'hardware@test.com',
+      role: 'PROVIDER',
+      providerType: 'SUPPLIER',
+      onboardingComplete: true,
+      name: 'ProBuild Hardware',
+      phone: '(555) 300-1002',
+      verificationStatus: true,
+      supplierProfile: {
+        create: {
+          firstName: 'Nancy',
+          lastName: 'Clark',
+          companyName: 'ProBuild Hardware & Supplies',
+          contactNumber1: '(555) 300-1002',
+          email: 'hardware@test.com',
+          materialTypes: ['fasteners', 'tools', 'adhesives', 'hardware'],
+        },
+      },
+    },
+  });
+
+  console.log('✓ Seeded 2 supplier profiles');
 
   // 4. Seed Test Project
   const project = await prisma.project.create({

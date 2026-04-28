@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronRight, ChevronDown, Loader2, AlertCircle, Pencil } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronRight, ChevronDown, Loader2, AlertCircle, Pencil, ScanLine, Eye, X, Check, Wand2, Trash2 } from 'lucide-react';
 import { useAuth } from '../../../../lib/auth-context';
-import { projects as projectsApi, ApiProject } from '../../../../lib/api';
+import { projects as projectsApi, uploads as uploadsApi, documents as documentsApi, ApiProject, ApiDocument } from '../../../../lib/api';
 
 type TabType = 'overview' | 'documents' | 'scope' | 'team';
 
@@ -22,6 +23,461 @@ const STATUS_LABELS: Record<string, string> = {
   CLOSING: 'Closing',
   ARCHIVED: 'Archived',
 };
+
+// ─── Documents Tab Component ───────────────────────────────
+
+function DocumentsTab({ project, onProjectUpdate }: { project: ApiProject; onProjectUpdate: (p: ApiProject) => void }) {
+  const router = useRouter();
+  const [uploading, setUploading] = useState(false);
+  const [scanningId, setScanningId] = useState<string | null>(null);
+  const [convertingId, setConvertingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteDoc, setConfirmDeleteDoc] = useState<ApiDocument | null>(null);
+  const [convertResult, setConvertResult] = useState<{
+    docId: string;
+    isScopeDocument: boolean;
+    confidence: number;
+    reason?: string;
+    completenessPercent?: number;
+    filledFields?: string[];
+  } | null>(null);
+  const [viewingDoc, setViewingDoc] = useState<ApiDocument | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useState<HTMLInputElement | null>(null);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setUploadError(null);
+
+    try {
+      // 1. Get presigned URL
+      const { uploadUrl, key } = await uploadsApi.presign({
+        kind: 'scopeDoc',
+        contentType: file.type || 'application/pdf',
+        contentLength: file.size,
+      });
+
+      // 2. Upload to S3
+      const putRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type || 'application/pdf' },
+        body: file,
+      });
+      if (!putRes.ok) {
+        const detail = await putRes.text().catch(() => '');
+        throw new Error(
+          `Upload to storage failed (${putRes.status}). ${detail.slice(0, 200)}`,
+        );
+      }
+
+      // 3. Record document in DB
+      const category = file.type?.startsWith('image/') ? 'PHOTO' : 'TECHNICAL';
+      await projectsApi.addDocument(project.id, {
+        s3Key: key,
+        filename: file.name,
+        category,
+      });
+
+      // 4. Refresh project
+      const updated = await projectsApi.get(project.id);
+      onProjectUpdate(updated);
+    } catch (err: any) {
+      setUploadError(err.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+      // Reset file input
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const handleScan = async (doc: ApiDocument) => {
+    setScanningId(doc.id);
+    try {
+      const result = await documentsApi.scan(doc.id);
+      // Update document in project state
+      const updatedDocs = project.documents.map((d) =>
+        d.id === doc.id ? { ...d, extractedText: result.extractedText } : d,
+      );
+      onProjectUpdate({ ...project, documents: updatedDocs });
+      // Open the result
+      setViewingDoc({ ...doc, extractedText: result.extractedText });
+    } catch (err: any) {
+      setUploadError(err.message || 'Scan failed');
+    } finally {
+      setScanningId(null);
+    }
+  };
+
+  const handleDeleteConfirmed = async (doc: ApiDocument) => {
+    setDeletingId(doc.id);
+    try {
+      await documentsApi.delete(doc.id);
+      const updated = await projectsApi.get(project.id);
+      onProjectUpdate(updated);
+      setConfirmDeleteDoc(null);
+    } catch (err: any) {
+      setUploadError(err.message || 'Delete failed');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleConvertToScope = async (doc: ApiDocument) => {
+    setConvertingId(doc.id);
+    setConvertResult(null);
+    try {
+      const result = await documentsApi.convertToScope(doc.id);
+      setConvertResult({
+        docId: doc.id,
+        isScopeDocument: result.isScopeDocument,
+        confidence: result.confidence,
+        reason: result.reason,
+        completenessPercent: result.scope?.completenessPercent,
+        filledFields: result.scope?.filledFields,
+      });
+      if (result.isScopeDocument && result.scope) {
+        // Refresh project so the scope tab reflects the new data
+        const updated = await projectsApi.get(project.id);
+        onProjectUpdate(updated);
+      }
+    } catch (err: any) {
+      setUploadError(err.message || 'Convert to scope failed');
+    } finally {
+      setConvertingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
+        <h2 className="text-xl font-bold text-gray-900 mb-6">Project Documents</h2>
+
+        {uploadError && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-600 text-sm">
+            <AlertCircle size={16} />
+            {uploadError}
+            <button onClick={() => setUploadError(null)} className="ml-auto text-red-400 hover:text-red-600">
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {/* Upload area */}
+        <label className="block border-2 border-dashed border-gray-300 rounded-xl p-10 text-center hover:border-amber-400 transition-colors cursor-pointer">
+          <input
+            type="file"
+            accept="application/pdf,image/jpeg,image/png"
+            onChange={handleFileSelect}
+            className="hidden"
+            disabled={uploading}
+          />
+          {uploading ? (
+            <>
+              <Loader2 className="w-10 h-10 text-amber-500 mx-auto mb-3 animate-spin" />
+              <h3 className="font-semibold text-gray-900 mb-1">Uploading...</h3>
+              <p className="text-sm text-gray-500">Please wait while your file is uploaded</p>
+            </>
+          ) : (
+            <>
+              <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+              <h3 className="font-semibold text-gray-900 mb-1">Upload Documents</h3>
+              <p className="text-sm text-gray-500">Click to select a file — PDF, JPEG, or PNG</p>
+              <p className="text-xs text-gray-400 mt-1">Max 25MB for documents, 5MB for images</p>
+            </>
+          )}
+        </label>
+
+        {/* Document list */}
+        {project.documents.length > 0 && (
+          <div className="mt-6 space-y-3">
+            {project.documents.map((doc) => {
+              const isScanning = scanningId === doc.id;
+              const hasText = !!doc.extractedText;
+              const isPdf = doc.filename.toLowerCase().endsWith('.pdf');
+              const isImage = /\.(jpg|jpeg|png)$/i.test(doc.filename);
+              const canScan = isPdf || isImage;
+
+              return (
+                <div
+                  key={doc.id}
+                  className="flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-gray-300 transition-colors"
+                >
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    hasText ? 'bg-green-50' : 'bg-amber-50'
+                  }`}>
+                    <FileText size={18} className={hasText ? 'text-green-600' : 'text-amber-600'} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900 truncate">{doc.filename}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs text-gray-500">{doc.category}</span>
+                      <span className="text-xs text-gray-300">&middot;</span>
+                      <span className="text-xs text-gray-500">
+                        {new Date(doc.createdAt).toLocaleDateString()}
+                      </span>
+                      {hasText && (
+                        <>
+                          <span className="text-xs text-gray-300">&middot;</span>
+                          <span className="flex items-center gap-1 text-xs text-green-600">
+                            <Check size={10} />
+                            Scanned
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {hasText && (
+                      <button
+                        onClick={() => setViewingDoc(doc)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-amber-600 hover:text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-50 transition-colors"
+                      >
+                        <Eye size={14} />
+                        View
+                      </button>
+                    )}
+                    {hasText && (
+                      <button
+                        onClick={() => handleConvertToScope(doc)}
+                        disabled={convertingId === doc.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-50"
+                        title="Use AI Scope Architect to populate the project scope from this document"
+                      >
+                        {convertingId === doc.id ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            Converting...
+                          </>
+                        ) : (
+                          <>
+                            <Wand2 size={14} />
+                            Convert to Project Scope
+                          </>
+                        )}
+                      </button>
+                    )}
+                    {canScan && (
+                      <button
+                        onClick={() => handleScan(doc)}
+                        disabled={isScanning}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50"
+                      >
+                        {isScanning ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            Scanning...
+                          </>
+                        ) : (
+                          <>
+                            <ScanLine size={14} />
+                            {hasText ? 'Re-scan' : 'AI Scan'}
+                          </>
+                        )}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setConfirmDeleteDoc(doc)}
+                      disabled={deletingId === doc.id}
+                      className="flex items-center justify-center w-8 h-8 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                      title="Delete document"
+                      aria-label="Delete document"
+                    >
+                      {deletingId === doc.id ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={14} />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {project.documents.length === 0 && (
+          <p className="text-center text-gray-400 mt-6 text-sm">No documents uploaded yet</p>
+        )}
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      {confirmDeleteDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => deletingId === null && setConfirmDeleteDoc(null)}
+          />
+          <div className="relative bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Trash2 size={20} className="text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">Delete document?</h3>
+                <p className="text-sm text-gray-500 mt-0.5 break-all">
+                  {confirmDeleteDoc.filename}
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-700 mb-5">
+              This permanently removes the file and any extracted text. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmDeleteDoc(null)}
+                disabled={deletingId !== null}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteConfirmed(confirmDeleteDoc)}
+                disabled={deletingId !== null}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {deletingId === confirmDeleteDoc.id ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={14} />
+                    Delete
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Convert-to-Scope Result Modal */}
+      {convertResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setConvertResult(null)} />
+          <div className="relative bg-white rounded-2xl shadow-xl max-w-md w-full">
+            <div className="p-6">
+              {convertResult.isScopeDocument ? (
+                <>
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="w-10 h-10 bg-violet-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Wand2 size={20} className="text-violet-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Scope created from document</h3>
+                      <p className="text-sm text-gray-500 mt-0.5">
+                        AI confidence: {Math.round(convertResult.confidence * 100)}%
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mb-4 p-3 bg-violet-50 border border-violet-100 rounded-lg">
+                    <p className="text-sm text-violet-900 font-medium mb-1">
+                      {convertResult.completenessPercent}% complete
+                    </p>
+                    <p className="text-xs text-violet-700">
+                      Populated {convertResult.filledFields?.length ?? 0} of 9 scope fields:{' '}
+                      {(convertResult.filledFields ?? []).join(', ') || 'none'}
+                    </p>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => setConvertResult(null)}
+                      className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
+                    >
+                      Close
+                    </button>
+                    <button
+                      onClick={() => {
+                        setConvertResult(null);
+                        router.push(`/projects/${project.id}/scope`);
+                      }}
+                      className="px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors"
+                    >
+                      Open AI Scope Architect
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <AlertCircle size={20} className="text-amber-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Not a scope document</h3>
+                      <p className="text-sm text-gray-500 mt-0.5">
+                        AI confidence: {Math.round(convertResult.confidence * 100)}%
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-700 mb-4">
+                    {convertResult.reason ||
+                      'This file does not appear to describe a scope of work.'}
+                  </p>
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => setConvertResult(null)}
+                      className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Extracted Text Viewer Modal */}
+      {viewingDoc && viewingDoc.extractedText && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setViewingDoc(null)} />
+          <div className="relative bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-amber-50 rounded-lg flex items-center justify-center">
+                  <ScanLine size={18} className="text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900">{viewingDoc.filename}</h3>
+                  <p className="text-xs text-gray-500">AI-Extracted Content</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setViewingDoc(null)}
+                className="text-gray-400 hover:text-gray-600 p-1"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">
+                {viewingDoc.extractedText}
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(viewingDoc.extractedText || '');
+                }}
+                className="flex items-center gap-2 px-4 py-2 text-sm text-amber-600 border border-amber-200 rounded-lg hover:bg-amber-50 transition-colors"
+              >
+                Copy to Clipboard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Component ─────────────────────────────────────────
 
 export default function ProjectDetailPage({ params }: { params: { id: string } }) {
   const { user } = useAuth();
@@ -221,33 +677,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
       )}
 
       {activeTab === 'documents' && (
-        <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
-          <h2 className="text-xl font-bold text-gray-900 mb-6">Project Documents</h2>
-          <div className="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center hover:border-amber-400 transition-colors cursor-pointer">
-            <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="font-semibold text-gray-900 mb-1">Upload Documents</h3>
-            <p className="text-sm text-gray-500">Drag and drop files or click to upload</p>
-            <p className="text-xs text-gray-400 mt-2">Supported: PDF, Images, Documents</p>
-          </div>
-          {project.documents.length > 0 && (
-            <div className="mt-8 space-y-3">
-              {project.documents.map((doc) => (
-                <div key={doc.id} className="flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
-                  <FileText size={20} className="text-amber-600" />
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">{doc.filename}</p>
-                    <p className="text-xs text-gray-500">
-                      {doc.category} &middot; {new Date(doc.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {project.documents.length === 0 && (
-            <p className="text-center text-gray-400 mt-6 text-sm">No documents uploaded yet</p>
-          )}
-        </div>
+        <DocumentsTab project={project} onProjectUpdate={setProject} />
       )}
 
       {activeTab === 'scope' && (

@@ -30,7 +30,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const PUBLIC_PATHS = ['/', '/login'];
+const PUBLIC_PATHS = ['/', '/login', '/onboarding', '/discovery'];
+
+function isPublicPath(pathname: string): boolean {
+  if (PUBLIC_PATHS.includes(pathname)) return true;
+  // Allow public access to vendor detail pages, e.g. /discovery/abc-123
+  if (pathname.startsWith('/discovery/')) return true;
+  return false;
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -80,11 +87,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshUser, router]);
 
   // Redirect unauthenticated users away from protected pages
+  // Redirect users with incomplete onboarding to /onboarding
   useEffect(() => {
     if (loading) return;
-    const isPublic = PUBLIC_PATHS.includes(pathname);
+    const isPublic = isPublicPath(pathname);
     if (!user && !isPublic) {
       router.replace('/login');
+    } else if (
+      user &&
+      !user.onboardingComplete &&
+      pathname !== '/onboarding' &&
+      !pathname.startsWith('/discovery')
+    ) {
+      router.replace('/onboarding');
     }
   }, [user, loading, pathname, router]);
 

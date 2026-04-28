@@ -320,6 +320,7 @@ model ProjectDocument {
   category       DocumentCategory @default(TECHNICAL)
   filename       String
   s3Key          String           @map("s3_key")
+  extractedText  String?          @map("extracted_text")
   uploadedById   String           @map("uploaded_by_id") @db.Uuid
   createdAt      DateTime         @default(now()) @map("created_at")
 

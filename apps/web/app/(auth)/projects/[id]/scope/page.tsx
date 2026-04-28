@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, AlertCircle, Loader2, ArrowLeft, Sparkles, Mic, MicOff, Pencil, Plus } from 'lucide-react';
+import { Send, AlertCircle, Loader2, ArrowLeft, Sparkles, Mic, MicOff, Pencil, Plus, FileDown, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 import { projects as projectsApi, ApiProject } from '../../../../../lib/api';
 
@@ -69,6 +69,9 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [recentlyUpdated, setRecentlyUpdated] = useState<Set<string>>(new Set());
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [pdfReady, setPdfReady] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -390,10 +393,38 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
     [isStreaming, sendMessage],
   );
 
+  // Detect if PDF already exists
+  useEffect(() => {
+    if (project?.scopeDocument?.pdfS3Key) {
+      setPdfReady(true);
+    }
+  }, [project]);
+
+  const handleGeneratePdf = useCallback(async () => {
+    if (generatingPdf) return;
+    setGeneratingPdf(true);
+    setPdfError(null);
+    try {
+      await projectsApi.generateScopePdf(params.id);
+      setPdfReady(true);
+      // Refresh project to get updated pdfS3Key
+      projectsApi.get(params.id).then(setProject).catch(() => {});
+    } catch (err: any) {
+      setPdfError(err.message || 'Failed to generate PDF');
+    } finally {
+      setGeneratingPdf(false);
+    }
+  }, [generatingPdf, params.id]);
+
+  const handleDownloadPdf = useCallback(() => {
+    // Open the PDF download URL in a new tab
+    window.open(`/api/projects/${params.id}/scope/pdf`, '_blank');
+  }, [params.id]);
+
   if (loadingProject) {
     return (
       <div className="flex justify-center items-center h-full">
-        <Loader2 className="animate-spin text-gold" size={32} />
+        <Loader2 className="animate-spin text-amber-600" size={32} />
       </div>
     );
   }
@@ -401,7 +432,7 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
   if (projectError || !project) {
     return (
       <div className="p-8">
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-6 flex items-center gap-3 text-red-400">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 flex items-center gap-3 text-red-600">
           <AlertCircle size={20} />
           <span>{projectError || 'Project not found'}</span>
         </div>
@@ -429,39 +460,83 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
   const emptySections = SCOPE_SECTIONS.filter((s) => !scopeFieldValues[s.fieldKey]);
 
   return (
-    <div className="flex h-full bg-gradient-to-br from-navy via-navy-dark to-navy-light">
+    <div className="flex h-full bg-slate-50">
       {/* Left Panel - SOW Preview (60%) */}
-      <div className="w-3/5 border-r border-white/10 flex flex-col overflow-hidden">
+      <div className="w-3/5 border-r border-gray-200 flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="bg-white/5 border-b border-white/10 p-4 flex items-center justify-between">
+        <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between">
           <Link
             href={`/projects/${params.id}`}
-            className="inline-flex items-center gap-2 text-white/60 hover:text-white transition-colors text-sm"
+            className="inline-flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors text-sm"
           >
             <ArrowLeft size={14} />
             Back to Project
           </Link>
           <div className="flex items-center gap-2">
-            <Sparkles className="text-gold" size={16} />
-            <span className="text-sm font-medium text-white">AI Scope Architect</span>
+            <Sparkles className="text-amber-600" size={16} />
+            <span className="text-sm font-medium text-gray-900">AI Scope Architect</span>
           </div>
         </div>
 
-        {/* Progress Bar */}
-        <div className="bg-white/5 border-b border-white/10 p-6">
+        {/* Progress Bar + PDF Actions */}
+        <div className="bg-white border-b border-gray-200 p-6">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="font-semibold text-white">Scope Completeness</h2>
-            <span className="text-sm text-gold font-medium">{completeness}%</span>
+            <h2 className="font-semibold text-gray-900">Scope Completeness</h2>
+            <span className="text-sm text-amber-600 font-medium">{completeness}%</span>
           </div>
-          <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+          <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-gold to-gold/70 transition-all duration-500"
+              className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-500"
               style={{ width: `${completeness}%` }}
             />
           </div>
           {completeness >= 65 && (
-            <p className="text-xs text-green-400 mt-2">
-              Scope is ready for PDF generation
+            <div className="flex items-center justify-between mt-3">
+              <p className="text-xs text-green-600 flex items-center gap-1">
+                <CheckCircle2 size={12} />
+                Scope is ready for PDF generation
+              </p>
+              <div className="flex items-center gap-2">
+                {pdfReady && (
+                  <button
+                    onClick={handleDownloadPdf}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md
+                      bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <FileDown size={13} />
+                    Download PDF
+                  </button>
+                )}
+                <button
+                  onClick={handleGeneratePdf}
+                  disabled={generatingPdf}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md
+                    bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {generatingPdf ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin" />
+                      Generating...
+                    </>
+                  ) : pdfReady ? (
+                    <>
+                      <FileDown size={13} />
+                      Regenerate PDF
+                    </>
+                  ) : (
+                    <>
+                      <FileDown size={13} />
+                      Generate PDF
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+          {pdfError && (
+            <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
+              <AlertCircle size={12} />
+              {pdfError}
             </p>
           )}
         </div>
@@ -469,8 +544,8 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
         {/* SOW Preview */}
         <div className="flex-1 overflow-auto p-8 space-y-6">
           <div>
-            <h1 className="text-2xl font-bold text-white mb-1">Scope of Work</h1>
-            <p className="text-white/60 text-sm">{project.title} &mdash; {project.type}</p>
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">Scope of Work</h1>
+            <p className="text-gray-500 text-sm">{project.title} &mdash; {project.type}</p>
           </div>
 
           {populatedSections.map((section) => {
@@ -482,19 +557,19 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
                 onClick={() => handleSectionClick(section.fieldKey, true)}
                 className={`group cursor-pointer rounded-xl transition-all duration-300 ${
                   isUpdated
-                    ? 'ring-2 ring-gold/50 animate-pulse'
+                    ? 'ring-2 ring-amber-400 animate-pulse'
                     : isActive
-                      ? 'ring-2 ring-gold/30'
-                      : 'hover:ring-1 hover:ring-white/20'
+                      ? 'ring-2 ring-amber-300'
+                      : 'hover:ring-1 hover:ring-gray-300'
                 }`}
               >
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-lg font-semibold text-gold">{section.label}</h2>
+                  <h2 className="text-lg font-semibold text-amber-600">{section.label}</h2>
                   <span
                     className={`flex items-center gap-1 text-xs transition-opacity ${
                       isActive
-                        ? 'text-gold opacity-100'
-                        : 'text-white/30 opacity-0 group-hover:opacity-100'
+                        ? 'text-amber-600 opacity-100'
+                        : 'text-gray-300 opacity-0 group-hover:opacity-100'
                     }`}
                   >
                     <Pencil size={12} />
@@ -504,13 +579,13 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
                 <div
                   className={`border rounded-lg p-4 transition-colors ${
                     isUpdated
-                      ? 'bg-gold/10 border-gold/30'
+                      ? 'bg-amber-50 border-amber-300'
                       : isActive
-                        ? 'bg-gold/5 border-gold/20'
-                        : 'bg-white/5 border-white/10 group-hover:border-white/20'
+                        ? 'bg-amber-50 border-amber-200'
+                        : 'bg-white border-gray-200 shadow-sm group-hover:shadow-md'
                   }`}
                 >
-                  <p className="text-white/80 text-sm leading-relaxed whitespace-pre-wrap">
+                  <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">
                     {scopeFieldValues[section.fieldKey]}
                   </p>
                 </div>
@@ -520,7 +595,7 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
 
           {emptySections.length > 0 && (
             <div className="space-y-3">
-              <h3 className="text-sm font-medium text-white/40 uppercase tracking-wide">
+              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide">
                 Still Needed — click to start
               </h3>
               <div className="grid grid-cols-2 gap-2">
@@ -534,20 +609,20 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
                       disabled={isStreaming}
                       className={`text-left border rounded-lg p-3 transition-all duration-300 group ${
                         isUpdated
-                          ? 'bg-gold/10 border-gold/30 ring-2 ring-gold/50'
+                          ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-400'
                           : isActive
-                            ? 'bg-gold/5 border-gold/30 ring-1 ring-gold/20'
-                            : 'bg-white/5 border-dashed border-white/10 hover:border-gold/30 hover:bg-gold/5'
+                            ? 'bg-amber-50 border-amber-300 ring-1 ring-amber-300'
+                            : 'bg-gray-50 border-dashed border-gray-300 hover:border-amber-300 hover:bg-amber-50'
                       } disabled:opacity-50 disabled:cursor-not-allowed`}
                     >
                       <div className="flex items-center justify-between">
-                        <p className={`text-xs ${isActive ? 'text-gold' : 'text-white/30 group-hover:text-white/60'}`}>
+                        <p className={`text-xs ${isActive ? 'text-amber-600' : 'text-gray-400 group-hover:text-gray-500'}`}>
                           {section.label}
                         </p>
                         <Plus
                           size={12}
                           className={`transition-opacity ${
-                            isActive ? 'text-gold opacity-100' : 'text-white/20 opacity-0 group-hover:opacity-100'
+                            isActive ? 'text-amber-600 opacity-100' : 'text-gray-300 opacity-0 group-hover:opacity-100'
                           }`}
                         />
                       </div>
@@ -560,9 +635,9 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
 
           {populatedSections.length === 0 && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Sparkles className="text-gold/30 mb-4" size={48} />
-              <h3 className="text-lg font-semibold text-white/60 mb-2">No scope data yet</h3>
-              <p className="text-sm text-white/40 max-w-sm">
+              <Sparkles className="text-amber-300 mb-4" size={48} />
+              <h3 className="text-lg font-semibold text-gray-500 mb-2">No scope data yet</h3>
+              <p className="text-sm text-gray-400 max-w-sm">
                 Start chatting with the AI Scope Architect to build your Scope of Work.
                 Answer questions about your project and watch the scope fill in here.
               </p>
@@ -572,14 +647,14 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
       </div>
 
       {/* Right Panel - Chat (40%) */}
-      <div className="w-2/5 flex flex-col bg-white/5">
+      <div className="w-2/5 flex flex-col bg-gray-50">
         {/* AI Unavailable Warning */}
         {aiUnavailable && (
-          <div className="bg-yellow-500/10 border-b border-yellow-500/20 p-4 flex items-start gap-3">
-            <AlertCircle className="text-yellow-400 flex-shrink-0 mt-0.5" size={16} />
+          <div className="bg-amber-50 border-b border-amber-200 p-4 flex items-start gap-3">
+            <AlertCircle className="text-amber-600 flex-shrink-0 mt-0.5" size={16} />
             <div className="text-sm">
-              <p className="font-medium text-yellow-400">AI features unavailable</p>
-              <p className="text-yellow-400/70 text-xs mt-1">
+              <p className="font-medium text-amber-700">AI features unavailable</p>
+              <p className="text-amber-600 text-xs mt-1">
                 The ANTHROPIC_API_KEY environment variable is not configured on the server.
               </p>
             </div>
@@ -588,12 +663,12 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
 
         {/* Chat Error */}
         {chatError && (
-          <div className="bg-red-500/10 border-b border-red-500/20 p-3 flex items-center gap-2">
-            <AlertCircle className="text-red-400 flex-shrink-0" size={14} />
-            <p className="text-red-400 text-xs">{chatError}</p>
+          <div className="bg-red-50 border-b border-red-200 p-3 flex items-center gap-2">
+            <AlertCircle className="text-red-600 flex-shrink-0" size={14} />
+            <p className="text-red-600 text-xs">{chatError}</p>
             <button
               onClick={() => setChatError(null)}
-              className="ml-auto text-red-400/60 hover:text-red-400 text-xs"
+              className="ml-auto text-red-400 hover:text-red-600 text-xs"
             >
               Dismiss
             </button>
@@ -610,8 +685,8 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
               <div
                 className={`max-w-[85%] rounded-lg px-4 py-3 ${
                   message.type === 'user'
-                    ? 'bg-gold text-navy rounded-br-none'
-                    : 'bg-white/10 text-white rounded-bl-none'
+                    ? 'bg-amber-500 text-white rounded-br-none'
+                    : 'bg-white border border-gray-200 text-gray-800 shadow-sm rounded-bl-none'
                 }`}
               >
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">
@@ -623,13 +698,13 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
                     idx === messages.length - 1 &&
                     !message.content && (
                       <span className="inline-flex gap-1 ml-1">
-                        <span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-pulse" />
+                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />
                         <span
-                          className="w-1.5 h-1.5 bg-white/40 rounded-full animate-pulse"
+                          className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse"
                           style={{ animationDelay: '0.2s' }}
                         />
                         <span
-                          className="w-1.5 h-1.5 bg-white/40 rounded-full animate-pulse"
+                          className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse"
                           style={{ animationDelay: '0.4s' }}
                         />
                       </span>
@@ -646,8 +721,8 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
                 <button
                   key={i}
                   onClick={() => handleOptionClick(option)}
-                  className="px-4 py-2 text-sm rounded-full border border-gold/40 text-gold
-                    bg-gold/10 hover:bg-gold/20 hover:border-gold/60
+                  className="px-4 py-2 text-sm rounded-full border border-amber-300 text-amber-700
+                    bg-amber-50 hover:bg-amber-100 hover:border-amber-400
                     transition-all duration-200 active:scale-95"
                 >
                   {option}
@@ -660,8 +735,8 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
         </div>
 
         {/* Chat Input */}
-        <div className="border-t border-white/10 p-6 space-y-3">
-          <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-4 py-3 focus-within:border-gold/30 transition-colors">
+        <div className="border-t border-gray-200 p-6 space-y-3">
+          <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-4 py-3 focus-within:border-amber-500 transition-colors">
             <input
               ref={inputRef}
               type="text"
@@ -675,7 +750,7 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
               }}
               placeholder={aiUnavailable ? 'AI is not available...' : 'Describe your project scope...'}
               disabled={aiUnavailable || isStreaming}
-              className="flex-1 bg-transparent text-white placeholder-white/40 outline-none disabled:opacity-50"
+              className="flex-1 bg-transparent text-gray-900 placeholder-gray-400 outline-none disabled:opacity-50"
               autoFocus
             />
             {voiceSupported && (
@@ -684,9 +759,9 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
                 disabled={isStreaming || aiUnavailable}
                 className={`transition-colors ${
                   isListening
-                    ? 'text-red-400 hover:text-red-300 animate-pulse'
-                    : 'text-white/40 hover:text-white/70'
-                } disabled:text-white/20`}
+                    ? 'text-red-500 hover:text-red-400 animate-pulse'
+                    : 'text-gray-400 hover:text-gray-600'
+                } disabled:text-gray-300`}
                 title={isListening ? 'Stop recording' : 'Voice input'}
               >
                 {isListening ? <MicOff size={18} /> : <Mic size={18} />}
@@ -695,7 +770,7 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
             <button
               onClick={handleSendMessage}
               disabled={!input.trim() || isStreaming || aiUnavailable}
-              className="text-gold hover:text-gold/80 disabled:text-white/20 transition-colors"
+              className="text-amber-600 hover:text-amber-500 disabled:text-gray-300 transition-colors"
             >
               {isStreaming ? (
                 <Loader2 className="animate-spin" size={18} />
@@ -704,7 +779,7 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
               )}
             </button>
           </div>
-          <p className="text-xs text-white/40">
+          <p className="text-xs text-gray-400">
             {isStreaming
               ? 'AI is thinking...'
               : isListening

@@ -7,6 +7,9 @@ import {
   getRedirectResult,
   OAuthProvider,
   signOut,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   type UserCredential,
 } from 'firebase/auth';
 
@@ -104,6 +107,68 @@ export async function handleRedirectResult(): Promise<string | null> {
     return null;
   } catch {
     return null;
+  }
+}
+
+function mapAuthError(error: any): Error {
+  const code = error?.code as string | undefined;
+  switch (code) {
+    case 'auth/email-already-in-use':
+      return new Error('An account with this email already exists. Please log in.');
+    case 'auth/invalid-email':
+      return new Error('Please enter a valid email address.');
+    case 'auth/weak-password':
+      return new Error('Password must be at least 6 characters.');
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return new Error('Incorrect email or password.');
+    case 'auth/too-many-requests':
+      return new Error('Too many attempts. Try again in a minute.');
+    case 'auth/operation-not-allowed':
+      return new Error('Email/password sign-in is not enabled in Firebase.');
+    default:
+      return new Error(error?.message || 'Authentication failed');
+  }
+}
+
+/**
+ * Create a Firebase account with email + password.
+ * Returns the Firebase ID token to exchange with our backend.
+ */
+export async function signUpWithEmailPassword(email: string, password: string): Promise<string> {
+  if (!auth) throw new Error('Firebase is not configured');
+  try {
+    const result = await createUserWithEmailAndPassword(auth, email, password);
+    return await result.user.getIdToken();
+  } catch (error: any) {
+    throw mapAuthError(error);
+  }
+}
+
+/**
+ * Sign in to an existing Firebase account with email + password.
+ * Returns the Firebase ID token to exchange with our backend.
+ */
+export async function signInWithEmailPassword(email: string, password: string): Promise<string> {
+  if (!auth) throw new Error('Firebase is not configured');
+  try {
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    return await result.user.getIdToken();
+  } catch (error: any) {
+    throw mapAuthError(error);
+  }
+}
+
+/**
+ * Send a password reset email.
+ */
+export async function sendPasswordReset(email: string): Promise<void> {
+  if (!auth) throw new Error('Firebase is not configured');
+  try {
+    await sendPasswordResetEmail(auth, email);
+  } catch (error: any) {
+    throw mapAuthError(error);
   }
 }
 

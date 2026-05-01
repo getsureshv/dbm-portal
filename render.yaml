@@ -82,10 +82,9 @@ services:
     dockerContext: .
     healthCheckPath: /
     autoDeploy: true
-    # NEXT_PUBLIC_* must be present at BUILD time — Next.js bakes them
-    # into the client bundle. Render passes envVars as Docker build args.
-    dockerBuildArgs:
-      NEXT_PUBLIC_API_URL: https://dbm-portal-api.onrender.com
+    # NEXT_PUBLIC_* vars are baked into the client bundle at build time.
+    # Render automatically forwards envVars below as Docker --build-arg
+    # since the Dockerfile declares matching ARG instructions.
     envVars:
       - key: NODE_ENV
         value: production

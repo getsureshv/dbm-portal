@@ -30,6 +30,10 @@ services:
     dockerContext: .
     healthCheckPath: /health
     autoDeploy: true
+    # Pre-deploy runs after build, before start — perfect for migrations + seed.
+    # Both prisma migrate deploy and the seed script (upsert-based) are idempotent,
+    # so running on every deploy is safe.
+    preDeployCommand: cd /app/apps/api && npx prisma migrate deploy && npx prisma db seed
     envVars:
       - key: NODE_ENV
         value: production
@@ -63,8 +67,10 @@ services:
         value: us-east-1
       - key: AWS_S3_BUCKET
         sync: false
-      # AWS_S3_ENDPOINT intentionally omitted — uses real AWS S3 in prod.
-      # If switching to Cloudflare R2 / Backblaze B2, add it as a secret.
+      # For Cloudflare R2: set AWS_S3_ENDPOINT to
+      # https://<account-id>.r2.cloudflarestorage.com and AWS_REGION=auto.
+      - key: AWS_S3_ENDPOINT
+        sync: false
 
   # ─── Web (Next.js) ─────────────────────────────────────────
   - type: web
@@ -76,10 +82,9 @@ services:
     dockerContext: .
     healthCheckPath: /
     autoDeploy: true
-    # NEXT_PUBLIC_* must be present at BUILD time — Next.js bakes them
-    # into the client bundle. Render passes envVars as Docker build args.
-    dockerBuildArgs:
-      NEXT_PUBLIC_API_URL: https://dbm-portal-api.onrender.com
+    # NEXT_PUBLIC_* vars are baked into the client bundle at build time.
+    # Render automatically forwards envVars below as Docker --build-arg
+    # since the Dockerfile declares matching ARG instructions.
     envVars:
       - key: NODE_ENV
         value: production

@@ -31,10 +31,12 @@ Before running the Blueprint, have these ready:
    Settings → General → "Your apps" → Web app config. You need the 6
    `NEXT_PUBLIC_FIREBASE_*` values.
 4. **Anthropic API key** — `sk-ant-…` from [console.anthropic.com](https://console.anthropic.com).
-5. **AWS S3 bucket** + IAM user with PutObject/GetObject on that bucket. Render
-   has no built-in object storage, so you need real AWS S3 (or any
-   S3-compatible service like Cloudflare R2 or Backblaze B2 — see
-   [Using R2 or B2 instead of S3](#using-r2-or-b2-instead-of-s3) below).
+5. **Object storage** — Render has no managed storage. Recommended:
+   **Cloudflare R2** (cheaper, $0 egress) or **AWS S3**. The Blueprint
+   includes `AWS_S3_ENDPOINT` for R2 compatibility — see
+   [Using R2 or B2 instead of S3](#using-r2-or-b2-instead-of-s3) below.
+   You'll need: bucket name, access key ID, secret access key, and
+   (for R2) the endpoint URL.
 
 ## Step-by-step deploy
 
@@ -139,13 +141,15 @@ Render auto-deploys on push, runs the new migration, then restarts the API.
 
 ## Seeding the trade taxonomy
 
-The discovery feature relies on seeded trade data. After the first deploy:
+The discovery feature relies on seeded trade data. **This happens automatically**
+via the API service's `preDeployCommand`, which runs `prisma migrate deploy &&
+prisma db seed` before each deploy. The seed script is upsert-based and
+idempotent — safe to run on every deploy.
+
+If you ever need to reseed manually:
 
 1. Render dashboard → `dbm-portal-api` → **Shell** tab
-2. Run: `cd apps/api && npx prisma db seed`
-
-(Or add a one-off [Render job](https://render.com/docs/jobs) to your Blueprint
-if you want this automated.)
+2. Run: `cd /app/apps/api && npx prisma db seed`
 
 ## Using R2 or B2 instead of S3
 

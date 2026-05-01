@@ -39,19 +39,34 @@ async function bootstrap() {
   // Security
   app.use(helmet());
   app.use(cookieParser());
+
+  // CORS — strict in production, permissive in development.
+  // WEB_URL must be set in production or the API fails fast at boot.
+  const isProd = process.env.NODE_ENV === 'production';
+  const allowAll = process.env.CORS_ALLOW_ALL === 'true';
+
+  if (isProd && !process.env.WEB_URL && !allowAll) {
+    throw new Error(
+      'WEB_URL is required in production. Set it to your web app origin (e.g. https://app.example.com), ' +
+      'or set CORS_ALLOW_ALL=true to opt in to permissive CORS.',
+    );
+  }
+
   const allowedOrigins = [
     process.env.WEB_URL,
-    'http://localhost:3000',
+    ...(isProd ? [] : ['http://localhost:3000']),
   ].filter(Boolean) as string[];
 
   app.enableCors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, curl, etc.)
-      if (!origin || allowedOrigins.some((o) => origin.startsWith(o))) {
-        callback(null, true);
-      } else {
-        callback(null, true); // Allow all in early beta
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      // Allow requests with no origin (mobile apps, curl, server-to-server).
+      if (!origin) return callback(null, true);
+      if (allowAll) return callback(null, true);
+      if (allowedOrigins.some((o) => origin.startsWith(o))) {
+        return callback(null, true);
       }
+      // Reject everything else (no silent allow-all fallback).
+      return callback(new Error(`Origin ${origin} not allowed by CORS`), false);
     },
     credentials: true,
   });

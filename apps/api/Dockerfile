@@ -39,4 +39,7 @@ COPY --from=base /app/pnpm-workspace.yaml ./
 ENV NODE_ENV=production
 EXPOSE 4000
 
-CMD ["node", "apps/api/dist/src/main.js"]
+# Run pending migrations, then start the API.
+# `prisma migrate deploy` is idempotent and safe to run on every boot.
+WORKDIR /app/apps/api
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main.js"]

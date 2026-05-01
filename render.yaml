@@ -1,0 +1,103 @@
+# ─── Render Blueprint for DBM Construction Portal ──────────────
+# Docs: https://render.com/docs/blueprint-spec
+#
+# This Blueprint provisions:
+#   - 1 managed PostgreSQL 16 database
+#   - 1 NestJS API service (Docker)
+#   - 1 Next.js Web service (Docker)
+#
+# After merging this file to main, in Render:
+#   1. New + → Blueprint → connect this repo → Apply
+#   2. Fill in the secrets marked `sync: false` in the dashboard
+#   3. Trigger a deploy
+
+databases:
+  - name: dbm-portal-db
+    plan: basic-256mb        # $6/mo · upgrade to standard for prod traffic
+    databaseName: dbm_portal
+    user: dbm
+    postgresMajorVersion: 16
+    ipAllowList: []          # private network only
+
+services:
+  # ─── API (NestJS) ──────────────────────────────────────────
+  - type: web
+    name: dbm-portal-api
+    runtime: docker
+    plan: starter            # $7/mo · scale up when warm needed
+    region: oregon           # change if you prefer ohio/frankfurt/singapore
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: dbm-portal-db
+          property: connectionString
+      - key: WEB_URL
+        fromService:
+          type: web
+          name: dbm-portal-web
+          property: host       # https://dbm-portal-web.onrender.com
+      # ── Secrets — fill these in the Render dashboard ──
+      - key: SESSION_SECRET
+        generateValue: true    # Render generates a 32-char random string
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        value: us-east-1
+      - key: AWS_S3_BUCKET
+        sync: false
+      # AWS_S3_ENDPOINT intentionally omitted — uses real AWS S3 in prod.
+      # If switching to Cloudflare R2 / Backblaze B2, add it as a secret.
+
+  # ─── Web (Next.js) ─────────────────────────────────────────
+  - type: web
+    name: dbm-portal-web
+    runtime: docker
+    plan: starter            # $7/mo
+    region: oregon
+    dockerfilePath: ./apps/web/Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    autoDeploy: true
+    # NEXT_PUBLIC_* must be present at BUILD time — Next.js bakes them
+    # into the client bundle. Render passes envVars as Docker build args.
+    dockerBuildArgs:
+      NEXT_PUBLIC_API_URL: https://dbm-portal-api.onrender.com
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      # Server-side rewrite target — used by next.config.js rewrites.
+      - key: NEXT_PUBLIC_API_URL
+        value: https://dbm-portal-api.onrender.com
+      # Firebase client SDK (public — these ship to the browser anyway).
+      - key: NEXT_PUBLIC_FIREBASE_API_KEY
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_APP_ID
+        sync: false

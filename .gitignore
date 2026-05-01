@@ -25,7 +25,8 @@ Thumbs.db
 
 # Prisma
 apps/api/prisma/*.db
-apps/api/prisma/migrations/
+# Prisma migrations are committed (required for `prisma migrate deploy`)
+# apps/api/prisma/migrations/
 
 # Logs
 *.log

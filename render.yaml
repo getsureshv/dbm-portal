@@ -43,11 +43,11 @@ services:
         fromDatabase:
           name: dbm-portal-db
           property: connectionString
+      # WEB_URL needs the https:// prefix because CORS origins are compared
+      # with origin.startsWith(WEB_URL). Hardcoded against the service name
+      # since Render derives hostnames from service names predictably.
       - key: WEB_URL
-        fromService:
-          type: web
-          name: dbm-portal-web
-          property: host       # https://dbm-portal-web.onrender.com
+        value: https://dbm-portal-web.onrender.com
       # ── Secrets — fill these in the Render dashboard ──
       - key: SESSION_SECRET
         generateValue: true    # Render generates a 32-char random string

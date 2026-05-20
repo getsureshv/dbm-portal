@@ -37,10 +37,17 @@ COPY --from=base /app/apps/api/package.json ./apps/api/
 COPY --from=base /app/package.json ./
 COPY --from=base /app/pnpm-workspace.yaml ./
 
+# tsx is required by `prisma db seed` (runs `tsx prisma/seed/index.ts`).
+# Installed globally here rather than in package.json to keep the lockfile
+# untouched. Pinned for reproducibility.
+RUN npm install -g tsx@4.7.0
+
+# Copy and prepare entrypoint that runs migrations + seed + starts the API.
+COPY apps/api/docker-entrypoint.sh /app/apps/api/docker-entrypoint.sh
+RUN chmod +x /app/apps/api/docker-entrypoint.sh
+
 ENV NODE_ENV=production
 EXPOSE 4000
 
-# Run pending migrations, then start the API.
-# `prisma migrate deploy` is idempotent and safe to run on every boot.
 WORKDIR /app/apps/api
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main.js"]
+CMD ["/app/apps/api/docker-entrypoint.sh"]

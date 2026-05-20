@@ -30,10 +30,10 @@ services:
     dockerContext: .
     healthCheckPath: /health
     autoDeploy: true
-    # Pre-deploy runs after build, before start — perfect for migrations + seed.
-    # Both prisma migrate deploy and the seed script (upsert-based) are idempotent,
-    # so running on every deploy is safe.
-    preDeployCommand: cd /app/apps/api && npx prisma migrate deploy && npx prisma db seed
+    # Note: We do NOT use preDeployCommand because Render's pre-deploy step
+    # runs in a separate ephemeral container and its stderr is unreliably
+    # surfaced in deploy logs. Migrations + seed run in the container CMD
+    # instead (see apps/api/Dockerfile), so failures show up in service logs.
     envVars:
       - key: NODE_ENV
         value: production

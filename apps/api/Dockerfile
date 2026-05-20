@@ -10,14 +10,15 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 
-# Install dependencies
+# Copy Prisma schema BEFORE install so the postinstall hook
+# (which runs `prisma generate`) can find prisma/schema.prisma.
+COPY apps/api/prisma/ apps/api/prisma/
+
+# Install dependencies (postinstall runs `prisma generate` here)
 RUN pnpm install --frozen-lockfile
 
-# Copy API source
+# Copy remaining API source
 COPY apps/api/ apps/api/
-
-# Generate Prisma client
-RUN pnpm --filter @dbm/api exec prisma generate
 
 # Build API
 RUN pnpm --filter @dbm/api run build

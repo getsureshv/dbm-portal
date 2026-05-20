@@ -9,6 +9,11 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 
+# Copy Prisma schema BEFORE install — even though this is the web build,
+# pnpm runs postinstall hooks across the entire workspace including @dbm/api,
+# which calls `prisma generate` and needs apps/api/prisma/schema.prisma.
+COPY apps/api/prisma/ apps/api/prisma/
+
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 

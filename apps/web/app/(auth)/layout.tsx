@@ -63,8 +63,16 @@ export default function AuthLayout({
 
   const isActive = (href: string) => pathname.startsWith(href);
 
-  // Show loading while checking auth
-  if (loading) {
+  // Public access for /discovery and the city-integration demo:
+  // render minimal public chrome instead of redirecting. We do NOT gate these
+  // routes on the auth loading state because they don't require a user.
+  const isPublicJurisdictionPath =
+    /^\/projects\/[^/]+\/jurisdiction(\/|$)/.test(pathname);
+  const isPublicDiscoveryPath = pathname.startsWith('/discovery');
+  const isPublicPath = isPublicJurisdictionPath || isPublicDiscoveryPath;
+
+  // Show loading while checking auth — but skip the gate for public paths.
+  if (loading && !isPublicPath) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
         <Loader2 className="animate-spin text-amber-600" size={32} />
@@ -72,9 +80,10 @@ export default function AuthLayout({
     );
   }
 
-  // Public access for /discovery: render minimal public chrome instead of redirecting.
-  // AuthContext PUBLIC_PATHS keeps unauthenticated users on the page.
-  const isPublicDiscovery = !user && pathname.startsWith('/discovery');
+  // Render public chrome for unauthenticated visitors on public paths.
+  const isPublicJurisdiction = !user && isPublicJurisdictionPath;
+  const isPublicDiscovery =
+    (!user && isPublicDiscoveryPath) || isPublicJurisdiction;
   if (isPublicDiscovery) {
     return (
       <div className="flex flex-col h-screen bg-slate-50">

@@ -382,3 +382,66 @@ export const providers = {
     }),
 };
 
+// ─── Jurisdictions (City Integration Demo) ──────────────
+
+export interface ApiJurisdiction {
+  id: string;
+  name: string;
+  state: string;
+  slug: string;
+  vendor: 'ACCELA' | 'SHOVELS' | 'ETRAKIT' | 'ILMS' | 'MOCK';
+  hasZoning: boolean;
+  zipPrefixes: string[];
+}
+
+export interface ApiPermit {
+  id: string;
+  externalId: string;
+  address: string;
+  type: string | null;
+  status: 'OPEN' | 'ISSUED' | 'FINALIZED' | 'EXPIRED' | 'CANCELLED' | 'UNKNOWN';
+  issuedAt: string | null;
+  finalizedAt: string | null;
+  contractor: string | null;
+  valuation: string | null;
+  description: string | null;
+}
+
+export interface ApiCodeRule {
+  id: string;
+  codeFamily: 'IBC' | 'IRC' | 'IECC' | 'IPC' | 'IMC' | 'NEC' | 'LOCAL';
+  section: string;
+  title: string;
+  body: string;
+  scopeTags: string[];
+  sourceUrl: string | null;
+}
+
+export interface PermitsResponse {
+  jurisdiction: ApiJurisdiction;
+  permits: ApiPermit[];
+  cached: boolean;
+  fetchedAt: string;
+}
+
+export const jurisdictions = {
+  list: () => request<ApiJurisdiction[]>('/jurisdictions'),
+
+  resolve: (address: string) =>
+    request<{ address: string; jurisdiction: ApiJurisdiction | null }>(
+      `/jurisdictions/resolve?address=${encodeURIComponent(address)}`,
+    ),
+
+  permits: (slug: string, address: string, opts: { limit?: number; force?: boolean } = {}) => {
+    const params = new URLSearchParams({ address });
+    if (opts.limit) params.set('limit', String(opts.limit));
+    if (opts.force) params.set('force', 'true');
+    return request<PermitsResponse>(`/jurisdictions/${slug}/permits?${params}`);
+  },
+
+  codeRules: (slug: string, scope?: string) => {
+    const qs = scope ? `?scope=${encodeURIComponent(scope)}` : '';
+    return request<ApiCodeRule[]>(`/jurisdictions/${slug}/code-rules${qs}`);
+  },
+};
+

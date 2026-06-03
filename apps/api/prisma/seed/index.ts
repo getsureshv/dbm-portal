@@ -1,4 +1,5 @@
 import { PrismaClient, TradeGroup, LicenseStatus } from '@prisma/client';
+import { seedJurisdictions } from './jurisdictions';
 
 const prisma = new PrismaClient();
 
@@ -329,6 +330,8 @@ async function main() {
   });
 
   console.log(`✓ Created feature flag: ${featureFlag.key}`);
+
+  await seedJurisdictions(prisma);
 
   console.log('\n✅ Database seed completed successfully!');
 }

@@ -10,6 +10,7 @@ import { UploadsModule } from './modules/uploads/uploads.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { ProvidersModule } from './modules/providers/providers.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { JurisdictionsModule } from './modules/jurisdictions/jurisdictions.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -31,6 +32,7 @@ import { HealthController } from './health.controller';
     ChatModule,
     ProvidersModule,
     DocumentsModule,
+    JurisdictionsModule,
   ],
   controllers: [HealthController],
 })

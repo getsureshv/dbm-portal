@@ -36,6 +36,8 @@ function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.includes(pathname)) return true;
   // Allow public access to vendor detail pages, e.g. /discovery/abc-123
   if (pathname.startsWith('/discovery/')) return true;
+  // Allow public access to the city-integration demo, e.g. /projects/demo/jurisdiction
+  if (/^\/projects\/[^/]+\/jurisdiction(\/.*)?$/.test(pathname)) return true;
   return false;
 }
 

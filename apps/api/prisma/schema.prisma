@@ -491,3 +491,102 @@ model ProgressReport {
   project     Project      @relation(fields: [projectId], references: [id])
   @@map("progress_reports")
 }
+
+// ─── CITY INTEGRATION (Demo: Dallas + Flower Mound) ─────────
+// One Jurisdiction per city; one Adapter per Jurisdiction.vendor.
+// Permits and CodeRules normalize across all city vendors.
+
+enum JurisdictionVendor {
+  ACCELA           // Dallas (DallasNow)
+  SHOVELS          // aggregator fallback
+  ETRAKIT          // CentralSquare eTRAKiT (Flower Mound)
+  ILMS             // Houston legacy (deferred)
+  MOCK             // demo / dev fallback
+}
+
+enum PermitStatus {
+  OPEN
+  ISSUED
+  FINALIZED
+  EXPIRED
+  CANCELLED
+  UNKNOWN
+}
+
+enum CodeFamily {
+  IBC              // International Building Code
+  IRC              // International Residential Code
+  IECC             // Energy
+  IPC              // Plumbing
+  IMC              // Mechanical
+  NEC              // Electrical (NFPA 70)
+  LOCAL            // City amendment
+}
+
+model Jurisdiction {
+  id             String             @id @default(uuid()) @db.Uuid
+  name           String             // e.g. "City of Dallas"
+  state          String             @db.VarChar(2)  // "TX"
+  slug           String             @unique          // "dallas-tx"
+  fips           String?                              // county/place FIPS
+  vendor         JurisdictionVendor
+  hasZoning      Boolean            @default(true) @map("has_zoning")
+  adapterConfig  Json?              @map("adapter_config") // tokens scoped to env, NOT secrets
+  zipPrefixes    String[]           @map("zip_prefixes")   // simple address→jurisdiction resolver
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+  permits        Permit[]
+  codeRules      CodeRule[]
+  addressLookups AddressLookup[]
+  @@index([state])
+  @@map("jurisdictions")
+}
+
+model Permit {
+  id             String       @id @default(uuid()) @db.Uuid
+  jurisdictionId String       @map("jurisdiction_id") @db.Uuid
+  externalId     String       @map("external_id")           // city's permit number
+  address        String                                      // normalized
+  type           String?                                     // "Residential Deck" etc.
+  status         PermitStatus @default(UNKNOWN)
+  issuedAt       DateTime?    @map("issued_at")
+  finalizedAt    DateTime?    @map("finalized_at")
+  contractor     String?                                     // pro/contractor of record
+  valuation      Decimal?     @db.Decimal(14, 2)
+  description    String?
+  raw            Json?                                       // raw vendor payload for audit
+  fetchedAt      DateTime     @default(now()) @map("fetched_at")
+  jurisdiction   Jurisdiction @relation(fields: [jurisdictionId], references: [id])
+  @@unique([jurisdictionId, externalId])
+  @@index([address])
+  @@map("permits")
+}
+
+model CodeRule {
+  id             String       @id @default(uuid()) @db.Uuid
+  jurisdictionId String       @map("jurisdiction_id") @db.Uuid
+  codeFamily     CodeFamily   @map("code_family")
+  section        String                                      // e.g. "R507"
+  title          String
+  body           String                                      // Markdown / plain text
+  scopeTags      String[]     @map("scope_tags")             // ["deck","adu","kitchen"]
+  effectiveDate  DateTime?    @map("effective_date")
+  sourceUrl      String?      @map("source_url")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  jurisdiction   Jurisdiction @relation(fields: [jurisdictionId], references: [id])
+  @@unique([jurisdictionId, codeFamily, section])
+  @@index([jurisdictionId, scopeTags])
+  @@map("code_rules")
+}
+
+model AddressLookup {
+  id             String       @id @default(uuid()) @db.Uuid
+  address        String                                       // normalized input
+  jurisdictionId String       @map("jurisdiction_id") @db.Uuid
+  lastSyncedAt   DateTime     @default(now()) @map("last_synced_at")
+  ttlSeconds     Int          @default(86400) @map("ttl_seconds")
+  jurisdiction   Jurisdiction @relation(fields: [jurisdictionId], references: [id])
+  @@unique([address, jurisdictionId])
+  @@map("address_lookups")
+}

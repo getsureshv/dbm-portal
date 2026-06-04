@@ -203,6 +203,15 @@ export async function seedJurisdictions(prisma: PrismaClient) {
       scopeTags: ['kitchen'],
       sourceUrl: 'https://codes.iccsafe.org/content/IECC2021P2',
     },
+    {
+      jurisdictionId: flowerMound.id,
+      codeFamily: CodeFamily.NEC,
+      section: 'NEC 210.8(A)(6)',
+      title: 'GFCI protection at kitchen counters',
+      body: 'All 125-volt, single-phase, 15- and 20-amp receptacles serving kitchen countertop surfaces must have ground-fault circuit-interrupter protection. Includes any receptacle within 6 ft of a sink. Flower Mound enforces 2020 NEC.',
+      scopeTags: ['kitchen'],
+      sourceUrl: 'https://www.nfpa.org/codes-and-standards/all-codes-and-standards/list-of-codes-and-standards/detail?code=70',
+    },
 
     // ── FLOWER MOUND — SOLAR ──────────────────────────────
     {
@@ -213,6 +222,15 @@ export async function seedJurisdictions(prisma: PrismaClient) {
       body: 'Roof-mounted PV must be flush-mounted within 6 in. of the roof plane. Ground-mounted arrays prohibited in front yards and require a 10 ft setback from any property line.',
       scopeTags: ['solar'],
       sourceUrl: 'https://www.flower-mound.com',
+    },
+    {
+      jurisdictionId: flowerMound.id,
+      codeFamily: CodeFamily.IRC,
+      section: 'R324.4',
+      title: 'Rooftop PV — fire access pathways',
+      body: 'Rooftop PV arrays on single-family dwellings must preserve a 36 in. clear pathway from eave to ridge on at least one side of each roof plane with installed PV, and 18 in. setbacks from hips and ridges for firefighter access.',
+      scopeTags: ['solar'],
+      sourceUrl: 'https://codes.iccsafe.org/content/IRC2021P2/chapter-3-building-planning#IRC2021P2_Pt03_Ch03_SecR324',
     },
   ];
 

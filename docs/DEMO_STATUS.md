@@ -1,8 +1,8 @@
 # DBM City Integration — Demo Status
 
 **Target ship date:** Thursday, June 11, 2026
-**Audit date:** Thursday, June 4, 2026
-**Branch:** `main` (latest PR #14 — Houston real via Shovels, on top of PRs #8, #10, #11, #12, #13)
+**Audit date:** Thursday, June 4, 2026 (updated after PR #16 merge)
+**Branch:** `main` (latest PR #16 — i18n foundations on top of #15 jurisdiction-aware chat; #14 Houston real via Shovels; #8/#10/#11/#12/#13 demo base)
 
 ## Live URLs
 
@@ -73,3 +73,35 @@ Open `docs/LOOM_DEMO_SCRIPT.md`. 5 minutes, scene-by-scene script with addresses
 - Permit responses cache in Postgres for 24h via `AddressLookup.ttlSeconds`, so first hit per address is the only outbound call against any upstream
 - The `JurisdictionAdapter` interface keeps real, mock, OpenData, and Accela implementations interchangeable, so swapping cities back to mock for cost control is trivial
 - Accela adapter preserved in `apps/api/src/modules/jurisdictions/adapters/accela.adapter.ts` for any city that grants partnership credentials in the future
+
+## Global roadmap (US → APAC → EU)
+
+The vision is to take DBM beyond the US. We're sequencing the work so nothing built today has to be thrown away tomorrow.
+
+### Phase 1-2 — demo (this week) – SHIPPED
+3 US cities (Dallas, Flower Mound, Houston), real permits via 2 vendors (Dallas OpenData + Shovels), curated code rules for deck/ADU/kitchen/solar, jurisdiction-aware AI chat with real IRC/NEC/LOCAL citations. Loom recording is the only pending demo item.
+
+### Phase 2.5 — i18n foundations (now) – SHIPPED (PR #16, 8fd24f0)
+Lean, additive schema + service prep for non-US expansion. **No behavior change, zero risk.**
+- `Jurisdiction.countryCode` / `timezone` / `measurementSystem` / `defaultCurrency`
+- `Permit.valuationCurrency`
+- Country-aware `JurisdictionsService.resolveAddress(address, countryCode='US')`
+- Dynamic supported-cities list in chat fallback (was hardcoded)
+- 102 tests passing (was 93); acceptance harness still green on all 3 cities
+
+### Phase 3 — multilingual platform + voice agent (4-6 weeks, one bundle) – NEXT
+Design doc: [`docs/PHASE_3_DESIGN.md`](./PHASE_3_DESIGN.md)
+
+Bundled because each surface depends on the others:
+- **Sign-up language picker** + `user.languagePreference` propagation
+- **`next-intl` SSR** — every UI string extracted, locale-correct first paint
+- **Translation pipeline** — DeepL with construction-term glossary; human curation for top 5 locales
+- **Per-language chat triggers** + locale-aware system prompt
+- **Bidirectional, interruptible voice agent** — OpenAI Realtime API + WebRTC + VAD; same tool-call bridge as text chat
+- **Schema renames** — `zipCode→postalCode`, `state→regionCode`, `fips→geoIds Json`, add `addressStructured Json`
+- **`CodeFamily` enum → lookup table** (per-country families: IRC/NEC for US, NBC for Canada, JIS for Japan, EN for EU…)
+- **Unit auto-conversion** — IMPERIAL↔METRIC based on `jurisdiction.measurementSystem`
+- **Launch locale:** `es-MX` (largest non-English US-residential segment) — alt: `fr-CA` if Canada is first non-US market
+
+### Phase 4+ — first non-US city
+Most likely sequence: Canada → a Japan pilot → EU. Each new country = adapter + curated rules + glossary entries; **schema and UX stay unchanged** because of Phase 2.5/3 work.

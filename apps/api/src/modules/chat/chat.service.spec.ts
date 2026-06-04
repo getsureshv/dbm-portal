@@ -94,3 +94,73 @@ describe('ChatService — jurisdiction-aware helpers', () => {
     });
   });
 });
+
+/**
+ * Separate suite for buildJurisdictionContext fallback wiring — specifically
+ * that the "unsupported ZIP" message now lists supported cities dynamically
+ * from JurisdictionsService.list() instead of a hardcoded string.
+ */
+describe('ChatService.buildJurisdictionContext — dynamic fallback list', () => {
+  let service: ChatService;
+  let listMock: jest.Mock;
+  let resolveMock: jest.Mock;
+
+  beforeEach(async () => {
+    listMock = jest.fn();
+    resolveMock = jest.fn().mockResolvedValue(null); // force unsupported path
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      providers: [
+        ChatService,
+        { provide: ConfigService, useValue: { get: () => undefined } },
+        { provide: PrismaService, useValue: {} },
+        {
+          provide: JurisdictionsService,
+          useValue: { list: listMock, resolveAddress: resolveMock },
+        },
+      ],
+    }).compile();
+    service = moduleRef.get(ChatService);
+  });
+
+  it('lists supported cities dynamically with country code', async () => {
+    listMock.mockResolvedValueOnce([
+      { name: 'City of Dallas', state: 'TX', countryCode: 'US' },
+      { name: 'Town of Flower Mound', state: 'TX', countryCode: 'US' },
+      { name: 'City of Houston', state: 'TX', countryCode: 'US' },
+    ]);
+    const out = await service.buildJurisdictionContext(
+      '99999',
+      'RESIDENTIAL',
+      null,
+      'do I need a permit?',
+    );
+    expect(out).not.toBeNull();
+    expect(out).toContain('City of Dallas (TX, US)');
+    expect(out).toContain('Town of Flower Mound (TX, US)');
+    expect(out).toContain('City of Houston (TX, US)');
+    // sanity: should NOT contain the old hardcoded list verbatim
+    expect(out).not.toContain('Dallas TX, Flower Mound TX, Houston TX');
+  });
+
+  it('falls back to a safe message if list() throws', async () => {
+    listMock.mockRejectedValueOnce(new Error('db down'));
+    const out = await service.buildJurisdictionContext(
+      '99999',
+      'RESIDENTIAL',
+      null,
+      'permits?',
+    );
+    expect(out).toContain('unable to enumerate supported jurisdictions');
+  });
+
+  it('handles empty jurisdiction list gracefully', async () => {
+    listMock.mockResolvedValueOnce([]);
+    const out = await service.buildJurisdictionContext(
+      '99999',
+      'RESIDENTIAL',
+      null,
+      'permits?',
+    );
+    expect(out).toContain('no jurisdictions configured');
+  });
+});

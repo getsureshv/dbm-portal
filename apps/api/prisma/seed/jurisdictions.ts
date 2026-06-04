@@ -14,6 +14,10 @@ export async function seedJurisdictions(prisma: PrismaClient) {
     update: {
       vendor: JurisdictionVendor.DALLAS_OPENDATA,
       zipPrefixes: ['752', '753'],
+      countryCode: 'US',
+      timezone: 'America/Chicago',
+      measurementSystem: 'IMPERIAL',
+      defaultCurrency: 'USD',
       adapterConfig: {
         datasetId: 'e7gq-4sah',
         domain: 'www.dallasopendata.com',
@@ -26,6 +30,10 @@ export async function seedJurisdictions(prisma: PrismaClient) {
       vendor: JurisdictionVendor.DALLAS_OPENDATA,
       hasZoning: true,
       zipPrefixes: ['752', '753'],
+      countryCode: 'US',
+      timezone: 'America/Chicago',
+      measurementSystem: 'IMPERIAL',
+      defaultCurrency: 'USD',
       adapterConfig: {
         datasetId: 'e7gq-4sah',
         domain: 'www.dallasopendata.com',
@@ -38,6 +46,10 @@ export async function seedJurisdictions(prisma: PrismaClient) {
     update: {
       vendor: JurisdictionVendor.SHOVELS,
       zipPrefixes: ['75022', '75028'],
+      countryCode: 'US',
+      timezone: 'America/Chicago',
+      measurementSystem: 'IMPERIAL',
+      defaultCurrency: 'USD',
     },
     create: {
       name: 'Town of Flower Mound',
@@ -46,6 +58,10 @@ export async function seedJurisdictions(prisma: PrismaClient) {
       vendor: JurisdictionVendor.SHOVELS,
       hasZoning: true,
       zipPrefixes: ['75022', '75028'],
+      countryCode: 'US',
+      timezone: 'America/Chicago',
+      measurementSystem: 'IMPERIAL',
+      defaultCurrency: 'USD',
       adapterConfig: { jurisdiction: 'Flower Mound,TX' },
     },
   });
@@ -55,6 +71,10 @@ export async function seedJurisdictions(prisma: PrismaClient) {
     update: {
       vendor: JurisdictionVendor.SHOVELS,
       zipPrefixes: ['770', '771', '772'],
+      countryCode: 'US',
+      timezone: 'America/Chicago',
+      measurementSystem: 'IMPERIAL',
+      defaultCurrency: 'USD',
       adapterConfig: { jurisdiction: 'Houston,TX' },
     },
     create: {
@@ -64,6 +84,10 @@ export async function seedJurisdictions(prisma: PrismaClient) {
       vendor: JurisdictionVendor.SHOVELS,
       hasZoning: true,
       zipPrefixes: ['770', '771', '772'],
+      countryCode: 'US',
+      timezone: 'America/Chicago',
+      measurementSystem: 'IMPERIAL',
+      defaultCurrency: 'USD',
       adapterConfig: { jurisdiction: 'Houston,TX' },
     },
   });

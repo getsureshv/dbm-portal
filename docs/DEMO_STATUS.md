@@ -2,7 +2,7 @@
 
 **Target ship date:** Thursday, June 11, 2026
 **Audit date:** Thursday, June 4, 2026
-**Branch:** `main` (PR #12 — Dallas OpenData, squash-merged on top of PRs #8, #10, #11)
+**Branch:** `main` (latest PR #14 — Houston real via Shovels, on top of PRs #8, #10, #11, #12, #13)
 
 ## Live URLs
 
@@ -18,10 +18,10 @@
 | 1 | Working page hit-able from Render or local | ✅ Done | https://dbm-portal-web.onrender.com/projects/demo/jurisdiction returns 200 with DEMO banner, city picker, scope picker, code rules section |
 | 2 | Real Dallas permits | ✅ Done | `DallasOpenDataAdapter` (PR #12) queries Socrata dataset `e7gq-4sah` — no auth required. Verified locally: 23 real records for `1500 Marilla St` with real permit numbers, contractors, and work descriptions. |
 | 3 | Flower Mound permits real-or-mock | ✅ **Real** | `ShovelsAdapter` (PR #13) wired to Shovels.ai v2 — verified locally returning 25 real FM permits for zip 75028 dated 2026-05-22. Will flip on Render when `SHOVELS_API_KEY` env var lands. |
-| 4 | 2-3 code rules per scope | ✅ Done | Dallas: deck=3, adu=3, kitchen=2, solar=2. Flower Mound: deck=2, adu=2, kitchen=2, solar=2 (after PR #10). |
+| 4 | 2-3 code rules per scope | ✅ Done | Dallas: deck=3, adu=3, kitchen=2, solar=2. Flower Mound: deck=2, adu=2, kitchen=2, solar=2. **Houston (NEW): deck=2, adu=3, kitchen=2, solar=2** (PR #14). |
 | 5 | DEMO disclaimer banner | ✅ Done | Banner visible on every page load; orange chrome `apps/web/app/(auth)/projects/[id]/jurisdiction/page.tsx` |
 | 6 | 5-minute Loom recording | ❌ Pending | Script written at `docs/LOOM_DEMO_SCRIPT.md`. Recording is a human-only task (Suresh records). |
-| 7 | PR ready or merged | ✅ Done | PRs #8, #10, #11, #12 all squash-merged into `main`. |
+| 7 | PR ready or merged | ✅ Done | PRs #8, #10, #11, #12, #13, #14 all squash-merged into `main`. |
 
 ## Why Dallas OpenData instead of Accela?
 
@@ -36,7 +36,7 @@ $ curl https://dbm-portal-api.onrender.com/jurisdictions
 [
   { "slug": "dallas-tx",       "vendor": "DALLAS_OPENDATA", "name": "City of Dallas" },
   { "slug": "flower-mound-tx", "vendor": "SHOVELS",         "name": "Town of Flower Mound" },
-  { "slug": "houston-tx",      "vendor": "MOCK",            "name": "City of Houston" }
+  { "slug": "houston-tx",      "vendor": "SHOVELS",         "name": "City of Houston" }
 ]
 
 $ curl "https://dbm-portal-api.onrender.com/jurisdictions/dallas-tx/permits?address=1500+Marilla+St,+Dallas,+TX+75201"

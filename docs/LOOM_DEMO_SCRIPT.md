@@ -103,6 +103,20 @@
 
 ---
 
+## Scene 5b — Houston via Shovels (3:00 – 3:30) — OPTIONAL
+
+**On screen:** Switch city dropdown to City of Houston (SHOVELS).
+
+**Action:** Paste `1001 Avenida de las Americas, Houston, TX 77010` (George R. Brown Convention Center). Click **Look up permits**.
+
+> "Third city: Houston — the 4th-largest in the US. Same Shovels adapter as Flower Mound; only difference is the jurisdiction config. You can see real Houston permits — building, electrical, HVAC, fire alarm — December 2025 through May 2026."
+
+**Action:** Switch scope to **Solar**.
+
+> "And the code rules adapt to Houston's reality: ASCE 7 design wind speed 140 mph because we're in hurricane country, NEC 690 rapid shutdown, climate-zone-2A makeup-air rules for kitchen exhausts. None of this is one-size-fits-all."
+
+---
+
 ## Scene 6 — Architecture in 30 seconds (4:15 – 4:45)
 
 **On screen:** Quick switch to GitHub PR #8 → scroll the file tree.
@@ -115,7 +129,7 @@
 
 **On screen:** Back to the demo page.
 
-> "Next two weeks: wire the third Dallas–Plano corridor city (Frisco — Velocity Hall), expand curated rules to 6 scopes, and pipe permit history into the bid-confidence score on the provider side.
+> "Next two weeks: expand curated rules to 6 scopes, add Frisco (Accela Velocity Hall) as a 4th city, and pipe permit history into the bid-confidence score on the provider side.
 >
 > PRs are merged at github.com/getsureshv/dbm-portal — the Dallas real-data work is PR #12 on top of #8, #10, #11. Happy to walk anyone through the code. That's it, thanks."
 
@@ -132,5 +146,5 @@
 - **Cost?** Dallas OpenData is free and unauthenticated. API calls cached 24h in Postgres → marginal cost ~zero per address after first hit. Shovels is metered, we'll budget once volume is real.
 - **Why OpenData over Accela for Dallas?** Same underlying data, but OpenData is public and Accela's Dallas agency requires partnership credentials. For other Accela-only cities we use the Accela adapter (still in the repo). For non-Accela / non-OpenData cities, Shovels is licensed access to the same underlying data.
 - **How fresh is the Dallas OpenData feed?** The current public snapshot is primarily 2019 vintage — Dallas has not refreshed the OpenData publication lately. Data is real, but for live freshness in production we'd combine OpenData with Accela partnership credentials or a direct city feed.
-- **Coverage roadmap?** Wave 1: Dallas, FM, Frisco. Wave 2: Plano, Lewisville, Carrollton. Wave 3: Houston ILMS, Austin AB+C.
+- **Coverage roadmap?** Wave 1 (shipped): Dallas, FM, Houston. Wave 2: Frisco, Plano, Lewisville, Carrollton. Wave 3: Austin AB+C, San Antonio.
 - **Why a "scope" picker vs free-text?** Curation. We hand-tag rules to scopes; LLM scope inference comes later but it's not blocking the demo.

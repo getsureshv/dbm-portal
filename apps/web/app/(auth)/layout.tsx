@@ -12,6 +12,7 @@ import {
   Briefcase,
   Bell,
   ChevronDown,
+  Scale,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -55,6 +56,7 @@ export default function AuthLayout({
     return [
       { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/projects', label: 'Projects', icon: Briefcase },
+      { href: '/permits', label: 'Permits & Codes', icon: Scale },
       { href: '/discovery', label: 'Discovery', icon: Compass },
       { href: '/chat', label: 'Chat', icon: MessageSquare },
       { href: '/profile', label: 'Profile', icon: Building2 },

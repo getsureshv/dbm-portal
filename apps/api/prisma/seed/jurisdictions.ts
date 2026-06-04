@@ -12,17 +12,24 @@ export async function seedJurisdictions(prisma: PrismaClient) {
   const dallas = await prisma.jurisdiction.upsert({
     where: { slug: 'dallas-tx' },
     update: {
-      vendor: JurisdictionVendor.ACCELA,
+      vendor: JurisdictionVendor.DALLAS_OPENDATA,
       zipPrefixes: ['752', '753'],
+      adapterConfig: {
+        datasetId: 'e7gq-4sah',
+        domain: 'www.dallasopendata.com',
+      },
     },
     create: {
       name: 'City of Dallas',
       state: 'TX',
       slug: 'dallas-tx',
-      vendor: JurisdictionVendor.ACCELA,
+      vendor: JurisdictionVendor.DALLAS_OPENDATA,
       hasZoning: true,
       zipPrefixes: ['752', '753'],
-      adapterConfig: { agency: 'DALLAS_TX' },
+      adapterConfig: {
+        datasetId: 'e7gq-4sah',
+        domain: 'www.dallasopendata.com',
+      },
     },
   });
 

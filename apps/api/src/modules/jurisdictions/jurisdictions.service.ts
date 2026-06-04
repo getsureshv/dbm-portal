@@ -14,6 +14,7 @@ import {
 import { MockAdapter } from './adapters/mock.adapter';
 import { AccelaAdapter } from './adapters/accela.adapter';
 import { ShovelsAdapter } from './adapters/shovels.adapter';
+import { DallasOpenDataAdapter } from './adapters/dallas-opendata.adapter';
 
 @Injectable()
 export class JurisdictionsService {
@@ -158,6 +159,8 @@ export class JurisdictionsService {
       config: (j.adapterConfig as Record<string, unknown> | null) ?? null,
     };
     switch (j.vendor) {
+      case JurisdictionVendor.DALLAS_OPENDATA:
+        return new DallasOpenDataAdapter(cfg);
       case JurisdictionVendor.ACCELA:
         return new AccelaAdapter(cfg);
       case JurisdictionVendor.SHOVELS:

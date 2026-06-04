@@ -53,17 +53,18 @@ export async function seedJurisdictions(prisma: PrismaClient) {
   const houston = await prisma.jurisdiction.upsert({
     where: { slug: 'houston-tx' },
     update: {
-      vendor: JurisdictionVendor.MOCK, // Wave 3 — mock for now
+      vendor: JurisdictionVendor.SHOVELS,
       zipPrefixes: ['770', '771', '772'],
+      adapterConfig: { jurisdiction: 'Houston,TX' },
     },
     create: {
       name: 'City of Houston',
       state: 'TX',
       slug: 'houston-tx',
-      vendor: JurisdictionVendor.MOCK,
+      vendor: JurisdictionVendor.SHOVELS,
       hasZoning: true,
       zipPrefixes: ['770', '771', '772'],
-      adapterConfig: { note: 'Wave 3 — ILMS adapter pending' },
+      adapterConfig: { jurisdiction: 'Houston,TX' },
     },
   });
 
@@ -238,6 +239,86 @@ export async function seedJurisdictions(prisma: PrismaClient) {
       body: 'Rooftop PV arrays on single-family dwellings must preserve a 36 in. clear pathway from eave to ridge on at least one side of each roof plane with installed PV, and 18 in. setbacks from hips and ridges for firefighter access.',
       scopeTags: ['solar'],
       sourceUrl: 'https://codes.iccsafe.org/content/IRC2021P2/chapter-3-building-planning#IRC2021P2_Pt03_Ch03_SecR324',
+    },
+
+    // ── HOUSTON — DECK ────────────────────────────────────
+    {
+      jurisdictionId: houston.id,
+      codeFamily: CodeFamily.IRC,
+      section: 'R507.2',
+      title: 'Deck materials & fasteners (Houston amendment)',
+      body: 'Houston adopts IRC R507 with humidity/termite amendments: all wood in ground contact must be Use-Category UC4A pressure-treated. Stainless or hot-dip galvanized fasteners required in all coastal-exposure conditions (within 3 mi of Galveston Bay).',
+      scopeTags: ['deck'],
+      sourceUrl: 'https://codes.iccsafe.org/content/IRC2021P2/chapter-5-floors#IRC2021P2_Pt03_Ch05_SecR507',
+    },
+    {
+      jurisdictionId: houston.id,
+      codeFamily: CodeFamily.LOCAL,
+      section: 'HOU-CCC-10-101',
+      title: 'Houston — accessory structure permit threshold',
+      body: 'Decks and similar accessory structures > 200 sq ft or > 30 in. above grade require a building permit and engineered drawings. Houston has no zoning, but deed restrictions and the Chapter 42 development ordinance apply to setbacks.',
+      scopeTags: ['deck', 'adu'],
+      sourceUrl: 'https://www.houstonpermittingcenter.org',
+    },
+
+    // ── HOUSTON — ADU ─────────────────────────────────────
+    {
+      jurisdictionId: houston.id,
+      codeFamily: CodeFamily.LOCAL,
+      section: 'HOU-CH42-204',
+      title: 'Houston ADU — Chapter 42 lot & setback rules',
+      body: 'Houston permits ADUs (locally "garage apartments" / accessory dwellings) on most single-family lots. Single-family lots must have 5 ft side setbacks and 10 ft rear setbacks; ADU height is capped at the height of the main dwelling.',
+      scopeTags: ['adu'],
+      sourceUrl: 'https://www.houstontx.gov/planning/DevelopRegs/',
+    },
+    {
+      jurisdictionId: houston.id,
+      codeFamily: CodeFamily.IRC,
+      section: 'R302.1',
+      title: 'ADU fire separation from property line',
+      body: 'Exterior walls of an ADU less than 5 ft from a property line require 1-hour fire-resistance-rated construction. Openings prohibited within 3 ft; limited to 25% of the wall area between 3-5 ft. Houston enforces 2021 IRC.',
+      scopeTags: ['adu'],
+      sourceUrl: 'https://codes.iccsafe.org/content/IRC2021P2',
+    },
+
+    // ── HOUSTON — KITCHEN ─────────────────────────────────
+    {
+      jurisdictionId: houston.id,
+      codeFamily: CodeFamily.NEC,
+      section: 'NEC 210.8(A)(6)',
+      title: 'GFCI protection at kitchen counters',
+      body: 'All 125-volt, single-phase, 15- and 20-amp receptacles serving kitchen countertop surfaces must be GFCI-protected, including any receptacle within 6 ft of a sink. Houston enforces 2020 NEC with no local amendment to this section.',
+      scopeTags: ['kitchen'],
+      sourceUrl: 'https://www.nfpa.org/codes-and-standards/all-codes-and-standards/list-of-codes-and-standards/detail?code=70',
+    },
+    {
+      jurisdictionId: houston.id,
+      codeFamily: CodeFamily.IRC,
+      section: 'M1503.4',
+      title: 'Kitchen exhaust — makeup air',
+      body: 'Kitchen exhaust hoods rated > 400 CFM require an equivalent makeup-air system, interlocked with the hood. Houston\'s climate zone (2A) makes negative-pressure backdrafting a real risk; inspectors check this on every kitchen remodel.',
+      scopeTags: ['kitchen'],
+      sourceUrl: 'https://codes.iccsafe.org/content/IRC2021P2',
+    },
+
+    // ── HOUSTON — SOLAR ───────────────────────────────────
+    {
+      jurisdictionId: houston.id,
+      codeFamily: CodeFamily.IRC,
+      section: 'R324',
+      title: 'Rooftop solar PV — wind & uplift (Houston)',
+      body: 'Houston is in ASCE 7 wind exposure C with design wind speed 140 mph (Vult). Rooftop PV racking and roof structure must be designed for resulting uplift. PE-stamped wind calculations required for systems > 4 kW.',
+      scopeTags: ['solar'],
+      sourceUrl: 'https://codes.iccsafe.org/content/IRC2021P2',
+    },
+    {
+      jurisdictionId: houston.id,
+      codeFamily: CodeFamily.NEC,
+      section: 'NEC 690.12',
+      title: 'PV rapid shutdown',
+      body: 'PV system circuits on or in buildings must include a rapid-shutdown function reducing controlled conductors to ≤ 30 V within 30 s of initiation. Initiation device at service equipment required. Houston enforces 2020 NEC.',
+      scopeTags: ['solar'],
+      sourceUrl: 'https://www.nfpa.org',
     },
   ];
 

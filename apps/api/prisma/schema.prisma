@@ -497,7 +497,8 @@ model ProgressReport {
 // Permits and CodeRules normalize across all city vendors.
 
 enum JurisdictionVendor {
-  ACCELA           // Dallas (DallasNow)
+  ACCELA           // Accela Construct API (per-agency partnership)
+  DALLAS_OPENDATA  // Dallas Socrata OpenData portal (public, no-auth)
   SHOVELS          // aggregator fallback
   ETRAKIT          // CentralSquare eTRAKiT (Flower Mound)
   ILMS             // Houston legacy (deferred)

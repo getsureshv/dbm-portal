@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../common/prisma.service';
 import { Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
+import { JurisdictionsService } from '../jurisdictions/jurisdictions.service';
+import type { CodeRule, Jurisdiction, Permit } from '@prisma/client';
 
 export interface ListConversationsParams {
   userId: string;
@@ -137,6 +139,7 @@ export class ChatService {
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
+    private jurisdictions: JurisdictionsService,
   ) {
     const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
     if (apiKey) {
@@ -209,7 +212,7 @@ export class ChatService {
       }
 
       // Build role-aware system prompt with current scope state
-      const systemPrompt = buildSystemPrompt({
+      let systemPrompt = buildSystemPrompt({
         role: user?.role || 'OWNER',
         userName: user?.name || 'there',
         projectTitle: project.title,
@@ -227,6 +230,23 @@ export class ChatService {
           aestheticPreferences: scopeDocument.aestheticPreferences,
         },
       });
+
+      // ─── Jurisdiction-aware augmentation (Option A: intent-routed retrieval)
+      // If the user is asking about permits / code rules / jurisdictions, fetch
+      // live data from JurisdictionsService and inject it as a context block
+      // ahead of the standard Scope Architect prompt. The model is then told to
+      // cite rule IDs and permit numbers verbatim and never invent.
+      if (this.detectJurisdictionIntent(userMessage)) {
+        const jurisdictionContext = await this.buildJurisdictionContext(
+          project.zipCode,
+          project.type,
+          scopeDocument.projectScope,
+          userMessage,
+        );
+        if (jurisdictionContext) {
+          systemPrompt = `${jurisdictionContext}\n\n${systemPrompt}`;
+        }
+      }
 
       // Build conversation history from previous turns
       const conversationHistory: Anthropic.Messages.MessageParam[] =
@@ -329,6 +349,168 @@ export class ChatService {
       );
       res.end();
     }
+  }
+
+  // ─── Jurisdiction-aware helpers ──────────────────────────────
+
+  /**
+   * Detect whether a user message is asking about permits, code rules, or
+   * jurisdiction-specific compliance. Conservative: only fires on clear
+   * trigger words to avoid over-injecting context into casual scope chat.
+   */
+  detectJurisdictionIntent(message: string): boolean {
+    if (!message) return false;
+    const m = message.toLowerCase();
+    const triggers = [
+      'permit',
+      'permits',
+      'code rule',
+      'code rules',
+      'building code',
+      'irc ',
+      'irc.',
+      'nec ',
+      'nec.',
+      'jurisdiction',
+      'inspector',
+      'inspection',
+      'allowed by',
+      'allowed in',
+      'is it legal',
+      'do i need a permit',
+      'pulled permits',
+      'recent permits',
+      'setback',
+      'gfci',
+      'rapid shutdown',
+      'wind load',
+      'compliance',
+      'comply with code',
+      'what codes',
+      'which codes',
+    ];
+    return triggers.some((t) => m.includes(t));
+  }
+
+  /**
+   * Infer the construction scope tag (deck / adu / kitchen / solar / generic)
+   * from the project's type and free-text scope description. Falls back to
+   * the user's current message as a last hint.
+   */
+  inferScopeTag(
+    projectType: string,
+    projectScope: string | null,
+    userMessage: string,
+  ): string | null {
+    const haystack = `${projectType || ''} ${projectScope || ''} ${userMessage || ''}`.toLowerCase();
+    if (/\b(deck|pergola|patio cover)\b/.test(haystack)) return 'deck';
+    if (/\b(adu|accessory dwelling|granny flat|casita|guest house|in[- ]?law)\b/.test(haystack))
+      return 'adu';
+    if (/\b(kitchen|cabinet|countertop|range hood|appliance)\b/.test(haystack))
+      return 'kitchen';
+    if (/\b(solar|pv|photovoltaic|panel|inverter)\b/.test(haystack)) return 'solar';
+    return null;
+  }
+
+  /**
+   * Fetch jurisdiction + rules + recent permits for the project and format
+   * them as a Claude system-prompt context block. Safe to call even when the
+   * project ZIP can't be resolved — returns null in that case so the caller
+   * can fall back to the bare scope-architect prompt and ask inline.
+   */
+  async buildJurisdictionContext(
+    zipCode: string,
+    projectType: string,
+    projectScope: string | null,
+    userMessage: string,
+  ): Promise<string | null> {
+    let jurisdiction: Jurisdiction | null = null;
+    try {
+      jurisdiction = await this.jurisdictions.resolveAddress(zipCode);
+    } catch (e) {
+      // Resolver shouldn't throw, but never let it crash chat.
+      jurisdiction = null;
+    }
+
+    if (!jurisdiction) {
+      // No jurisdiction match — instruct the model to ask the user inline.
+      return [
+        '─── JURISDICTION CONTEXT ───',
+        `The project ZIP "${zipCode}" did not match any supported jurisdiction.`,
+        'Supported cities currently: Dallas TX, Flower Mound TX, Houston TX.',
+        'Ask the user which city the project is in before answering anything about permits or code rules.',
+        'NEVER invent code citations or permit data. If the city is outside our coverage, say so plainly.',
+      ].join('\n');
+    }
+
+    const scopeTag = this.inferScopeTag(projectType, projectScope, userMessage);
+
+    let rules: CodeRule[] = [];
+    let recentPermits: Permit[] = [];
+    try {
+      rules = await this.jurisdictions.codeRules(
+        jurisdiction.slug,
+        scopeTag ?? undefined,
+      );
+    } catch {
+      rules = [];
+    }
+    try {
+      // Pull permits already cached for this jurisdiction (last 5 across any
+      // address) so we can show "recent activity nearby" without an extra
+      // address round-trip. Real address-specific calls happen on the
+      // /jurisdiction page.
+      recentPermits = await this.prisma.permit.findMany({
+        where: { jurisdictionId: jurisdiction.id },
+        orderBy: { issuedAt: 'desc' },
+        take: 5,
+      });
+    } catch {
+      recentPermits = [];
+    }
+
+    const rulesBlock = rules.length
+      ? rules
+          .slice(0, 8)
+          .map(
+            (r) =>
+              `  • [${r.codeFamily} ${r.section}] ${r.title} — ${r.body}` +
+              (r.sourceUrl ? ` (source: ${r.sourceUrl})` : ''),
+          )
+          .join('\n')
+      : '  (no curated rules on file for this scope yet)';
+
+    const permitsBlock = recentPermits.length
+      ? recentPermits
+          .map(
+            (p) =>
+              `  • #${p.externalId} — ${p.type} — ${p.status}` +
+              (p.issuedAt ? ` — issued ${p.issuedAt.toISOString().slice(0, 10)}` : '') +
+              (p.address ? ` @ ${p.address}` : ''),
+          )
+          .join('\n')
+      : '  (no recent permits cached — user can pull live results from the Jurisdiction tab)';
+
+    return [
+      '─── JURISDICTION CONTEXT (live data from DBM jurisdictions module) ───',
+      `Project ZIP: ${zipCode}`,
+      `Resolved jurisdiction: ${jurisdiction.name}, ${jurisdiction.state} (slug: ${jurisdiction.slug}, vendor: ${jurisdiction.vendor})`,
+      `Inferred scope tag: ${scopeTag ?? '(none — ask the user which scope: deck / ADU / kitchen / solar)'}`,
+      '',
+      'CURATED CODE RULES for this jurisdiction + scope:',
+      rulesBlock,
+      '',
+      'RECENT PERMITS on file for this jurisdiction:',
+      permitsBlock,
+      '',
+      '─── ANSWERING RULES (override the scope-architect rules below when responding to this question) ───',
+      '1. Use ONLY the rules and permits listed above. Quote the exact [codeFamily section] identifier and title.',
+      '2. NEVER invent code citations or permit numbers. If you do not have a rule for what the user asked, say so plainly.',
+      '3. If the scope tag is missing, ask the user which scope (deck / ADU / kitchen / solar) in ONE short sentence using <options>.',
+      '4. Format the answer as a short bulleted list — permits required first, then 2–3 most relevant code rules with their IDs.',
+      '5. End with one sentence telling the user they can pull a full address-specific permit history on the Jurisdiction tab.',
+      '6. Skip the <scope_update> extraction tags entirely for this turn — this is a code/permit Q&A, not scope-building.',
+    ].join('\n');
   }
 
   /**

@@ -21,7 +21,8 @@
 | 4 | 2-3 code rules per scope | ✅ Done | Dallas: deck=3, adu=3, kitchen=2, solar=2. Flower Mound: deck=2, adu=2, kitchen=2, solar=2. **Houston (NEW): deck=2, adu=3, kitchen=2, solar=2** (PR #14). |
 | 5 | DEMO disclaimer banner | ✅ Done | Banner visible on every page load; orange chrome `apps/web/app/(auth)/projects/[id]/jurisdiction/page.tsx` |
 | 6 | 5-minute Loom recording | ❌ Pending | Script written at `docs/LOOM_DEMO_SCRIPT.md`. Recording is a human-only task (Suresh records). |
-| 7 | PR ready or merged | ✅ Done | PRs #8, #10, #11, #12, #13, #14 all squash-merged into `main`. |
+| 7 | PR ready or merged | ✅ Done | PRs #8, #10, #11, #12, #13, #14 all squash-merged into `main`. `feat/chat-jurisdiction-aware` (Scene 5c) open as the next PR. |
+| 8 | **BONUS** — DBM chat can answer code/permit questions inline | ✅ Done | Intent-routed retrieval in `ChatService`: regex detects code/permit intent, resolves jurisdiction from `Project.zipCode`, infers scope from project type + scope text + user message, prepends a `─── JURISDICTION CONTEXT ───` block with curated rules + 5 most recent permits to Claude's system prompt. Six override rules force the model to cite real IDs and skip `<scope_update>` extraction. Acceptance: all 3 cities pass `scripts/test-chat-jurisdiction.ts`. |
 
 ## Why Dallas OpenData instead of Accela?
 

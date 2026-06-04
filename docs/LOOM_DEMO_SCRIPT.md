@@ -117,6 +117,28 @@
 
 ---
 
+## Scene 5c — Ask the AI (3:30 – 4:15) — NEW
+
+**On screen:** Open the DBM chat page for an existing project. Type into the chat input.
+
+> "Last thing before we close out. Everything we just saw lives on a dedicated Jurisdiction tab — but the AI Scope Architect can also pull it inline. Watch this."
+
+**Type:** `"What code rules and permits do I need for this ADU?"` (on a Dallas 75201 project).
+
+> "The chat detects code/permit intent, resolves the project's ZIP to Dallas via the same jurisdictions service, infers the scope is an ADU from the project description, and injects the real curated rules plus the latest cached permits into the model's context. The answer cites IRC R302.1, the Dallas zoning sections — verbatim from the database. Not hallucinated."
+
+**Switch project → Flower Mound 75028 → type:** `"Are there code rules I need to know about for the kitchen?"`
+
+> "Same surface, different city — NEC 210.8(A)(6) and IECC N1102.4 air sealing. Flower Mound rules, Flower Mound permits."
+
+**Switch project → Houston 77010 → type:** `"Show me the permits and code rules for this deck."`
+
+> "And Houston: IRC R507.2 with the coastal-fastener amendment, plus the Houston accessory-structure threshold. The chat is grounded — if we don't have a rule for what the user asks, the model is instructed to say so plainly rather than invent."
+
+**One-line callout on screen (or verbally):** *Branch `feat/chat-jurisdiction-aware` — ~150 LOC change in `chat.service.ts`, 24 new unit tests, zero schema migration.*
+
+---
+
 ## Scene 6 — Architecture in 30 seconds (4:15 – 4:45)
 
 **On screen:** Quick switch to GitHub PR #8 → scroll the file tree.
@@ -143,6 +165,7 @@
 
 ## Backup talking points (only if asked)
 
+- **How does Scene 5c work under the hood?** Intent regex on the user message (“permit”, “code rule”, “setback”, “GFCI”, …) triggers a synchronous fetch in `ChatService.streamScopeArchitectResponse`: resolve jurisdiction from `Project.zipCode`, infer scope from `project.type + scopeDocument.projectScope + userMessage`, call `JurisdictionsService.codeRules()` + read last 5 cached permits, format as a `─── JURISDICTION CONTEXT ───` block prepended to the standard Scope Architect system prompt. Six rule overrides at the bottom of the block force the model to cite real IDs and skip `<scope_update>` extraction for that turn. Phase 3 upgrade: convert to Anthropic tool-use so the model decides when to fetch.
 - **Cost?** Dallas OpenData is free and unauthenticated. API calls cached 24h in Postgres → marginal cost ~zero per address after first hit. Shovels is metered, we'll budget once volume is real.
 - **Why OpenData over Accela for Dallas?** Same underlying data, but OpenData is public and Accela's Dallas agency requires partnership credentials. For other Accela-only cities we use the Accela adapter (still in the repo). For non-Accela / non-OpenData cities, Shovels is licensed access to the same underlying data.
 - **How fresh is the Dallas OpenData feed?** The current public snapshot is primarily 2019 vintage — Dallas has not refreshed the OpenData publication lately. Data is real, but for live freshness in production we'd combine OpenData with Accela partnership credentials or a direct city feed.

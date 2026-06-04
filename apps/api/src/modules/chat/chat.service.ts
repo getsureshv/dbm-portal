@@ -434,10 +434,24 @@ export class ChatService {
 
     if (!jurisdiction) {
       // No jurisdiction match — instruct the model to ask the user inline.
+      // Pull the supported-city list live so this stays accurate as we add
+      // new countries/cities, instead of drifting against a hardcoded list.
+      let supportedList = '(no jurisdictions configured)';
+      try {
+        const all = await this.jurisdictions.list();
+        if (all.length) {
+          supportedList = all
+            .map((j) => `${j.name} (${j.state}, ${j.countryCode})`)
+            .join('; ');
+        }
+      } catch {
+        // Best-effort — fall back to a generic message.
+        supportedList = '(unable to enumerate supported jurisdictions right now)';
+      }
       return [
         '─── JURISDICTION CONTEXT ───',
         `The project ZIP "${zipCode}" did not match any supported jurisdiction.`,
-        'Supported cities currently: Dallas TX, Flower Mound TX, Houston TX.',
+        `Supported cities currently: ${supportedList}.`,
         'Ask the user which city the project is in before answering anything about permits or code rules.',
         'NEVER invent code citations or permit data. If the city is outside our coverage, say so plainly.',
       ].join('\n');

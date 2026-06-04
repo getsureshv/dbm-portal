@@ -527,20 +527,30 @@ enum CodeFamily {
 model Jurisdiction {
   id             String             @id @default(uuid()) @db.Uuid
   name           String             // e.g. "City of Dallas"
-  state          String             @db.VarChar(2)  // "TX"
+  state          String             @db.VarChar(2)  // "TX" (kept for backwards compat; Phase 3 aliases to regionCode)
   slug           String             @unique          // "dallas-tx"
-  fips           String?                              // county/place FIPS
+  fips           String?                              // county/place FIPS (US-only; Phase 3 generalizes to geoIds Json)
   vendor         JurisdictionVendor
   hasZoning      Boolean            @default(true) @map("has_zoning")
   adapterConfig  Json?              @map("adapter_config") // tokens scoped to env, NOT secrets
   zipPrefixes    String[]           @map("zip_prefixes")   // simple address→jurisdiction resolver
+  // ─── i18n / global-ready fields (Phase 2.5) ───
+  countryCode       String              @map("country_code") @db.Char(2) @default("US")   // ISO 3166-1 alpha-2
+  timezone          String              @default("America/Chicago")                       // IANA tz database
+  measurementSystem MeasurementSystem   @map("measurement_system") @default(IMPERIAL)
+  defaultCurrency   String              @map("default_currency") @db.Char(3) @default("USD") // ISO 4217
   createdAt      DateTime           @default(now()) @map("created_at")
   updatedAt      DateTime           @updatedAt @map("updated_at")
   permits        Permit[]
   codeRules      CodeRule[]
   addressLookups AddressLookup[]
-  @@index([state])
+  @@index([countryCode, state])
   @@map("jurisdictions")
+}
+
+enum MeasurementSystem {
+  IMPERIAL    // ft, in, sq ft, lb, °F  — US, Liberia, Myanmar
+  METRIC      // m, mm, m², kg, °C       — rest of world
 }
 
 model Permit {
@@ -554,6 +564,7 @@ model Permit {
   finalizedAt    DateTime?    @map("finalized_at")
   contractor     String?                                     // pro/contractor of record
   valuation      Decimal?     @db.Decimal(14, 2)
+  valuationCurrency String?   @map("valuation_currency") @db.Char(3)  // ISO 4217; nullable for legacy rows
   description    String?
   raw            Json?                                       // raw vendor payload for audit
   fetchedAt      DateTime     @default(now()) @map("fetched_at")

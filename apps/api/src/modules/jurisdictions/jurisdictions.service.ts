@@ -37,14 +37,26 @@ export class JurisdictionsService {
 
   /**
    * Resolve a free-text address to a jurisdiction. Demo-grade: matches
-   * by ZIP prefix on Jurisdiction.zipPrefixes. Real geocoder is Phase 2+.
+   * by postal-code prefix on Jurisdiction.zipPrefixes, scoped to a single
+   * country to prevent cross-country collisions (e.g. JP "100-0001" vs
+   * US "100xx"). Real geocoder is Phase 3+.
+   *
+   * @param address Free-text address (must contain a 5-digit postal code for US match).
+   * @param countryCode ISO 3166-1 alpha-2 country code. Defaults to 'US' for
+   *                    backward compatibility — every existing caller passes
+   *                    a US-shaped address today.
    */
-  async resolveAddress(address: string): Promise<Jurisdiction | null> {
+  async resolveAddress(
+    address: string,
+    countryCode = 'US',
+  ): Promise<Jurisdiction | null> {
     const zipMatch = address.match(/\b(\d{5})(?:-\d{4})?\b/);
     if (!zipMatch) return null;
     const zip = zipMatch[1];
     const prefixes = [zip, zip.slice(0, 3)];
-    const all = await this.prisma.jurisdiction.findMany();
+    const all = await this.prisma.jurisdiction.findMany({
+      where: { countryCode },
+    });
     return (
       all.find((j) =>
         j.zipPrefixes.some((p) => prefixes.includes(p) || zip.startsWith(p)),

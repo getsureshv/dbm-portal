@@ -1,0 +1,31 @@
+name: Migration Guard
+
+# Fast, dependency-free safety check for Prisma migrations.
+# Currently enforces: no enum "ADD VALUE then USE" in the same migration
+# (PostgreSQL forbids using a new enum value in the transaction that added it,
+# which would fail `prisma migrate deploy` and block API startup).
+#
+# Intentionally scoped to migration changes so it stays fast and never flaky.
+# This is a tripwire, not full CI (lint/test/build are a separate concern).
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/prisma/migrations/**'
+      - 'scripts/check-enum-migrations.mjs'
+      - '.github/workflows/migration-guard.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/prisma/migrations/**'
+
+jobs:
+  enum-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check enum migrations
+        run: node scripts/check-enum-migrations.mjs

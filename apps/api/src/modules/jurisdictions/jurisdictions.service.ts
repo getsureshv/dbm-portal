@@ -9,9 +9,8 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
 import {
-  CodeSourceConfig,
-  codeSourceFromConfig,
-  probeCodeSource,
+  resolveCodeSources,
+  orderDocsForScope,
 } from './code-source/code-source.resolver';
 import { extractRules } from './code-source/code-rules.extractor';
 import {
@@ -223,38 +222,29 @@ export class JurisdictionsService {
       return false; // cache fresh — don't re-fetch (even if it yielded 0)
     }
 
-    // Resolve the city's code source (cached on adapterConfig once known).
-    let source: CodeSourceConfig | null = codeSourceFromConfig(
-      j.adapterConfig,
-    );
-    if (!source) {
-      const probed = await probeCodeSource(j.name, j.state);
-      source = {
-        platform: probed.platform,
-        url: probed.url,
-        resolvedAt: new Date().toISOString(),
-      };
-      // Best-effort persist so we skip the probe next time.
-      try {
-        const cfg =
-          j.adapterConfig && typeof j.adapterConfig === 'object'
-            ? (j.adapterConfig as Record<string, unknown>)
-            : {};
-        await this.prisma.jurisdiction.update({
-          where: { id: j.id },
-          data: { adapterConfig: { ...cfg, codeSource: source } },
-        });
-      } catch (e) {
-        this.logger.warn(`could not persist codeSource for ${j.slug}: ${e}`);
-      }
+    // Resolve the city's official .gov code sources (adapterConfig override
+    // first, then the built-in registry). No SPA probing — these are direct
+    // links to the city's own permit/code pages + PDFs.
+    const sources = resolveCodeSources(j.slug, j.adapterConfig);
+    if (!sources || sources.docs.length === 0) {
+      // No source configured for this city yet. Stamp the marker so we don't
+      // re-resolve every hit, and return (panel shows empty until a .gov
+      // source is added to the registry/config — a tiny per-city config edit).
+      await this.stampCodeRuleLookup(j.id, scopeKey, null, 0);
+      this.logger.log(
+        `dynamic code rules: ${j.slug} — no .gov source configured, skipping`,
+      );
+      return true;
     }
 
+    const docs = orderDocsForScope(sources.docs, scope);
     const rules = await extractRules({
       anthropic: this.anthropic,
       cityName: j.name,
       scope,
-      sourceUrl: source.url,
+      docs,
     });
+    const primaryUrl = docs[0]?.url ?? null;
 
     // Persist extracted rules (upsert by the CodeRule unique key).
     for (const r of rules) {
@@ -289,26 +279,25 @@ export class JurisdictionsService {
     }
 
     // Stamp the freshness marker (records the attempt regardless of count).
-    await this.prisma.codeRuleLookup.upsert({
-      where: {
-        jurisdictionId_scope: { jurisdictionId: j.id, scope: scopeKey },
-      },
-      create: {
-        jurisdictionId: j.id,
-        scope: scopeKey,
-        sourceUrl: source.url,
-        ruleCount: rules.length,
-      },
-      update: {
-        lastSyncedAt: new Date(),
-        sourceUrl: source.url,
-        ruleCount: rules.length,
-      },
-    });
+    await this.stampCodeRuleLookup(j.id, scopeKey, primaryUrl, rules.length);
     this.logger.log(
-      `dynamic code rules: ${j.slug} scope="${scopeKey}" → ${rules.length} from ${source.url}`,
+      `dynamic code rules: ${j.slug} scope="${scopeKey}" → ${rules.length} from ${docs.length} .gov source(s)`,
     );
     return true;
+  }
+
+  /** Upsert the CodeRuleLookup freshness marker for (jurisdiction, scope). */
+  private async stampCodeRuleLookup(
+    jurisdictionId: string,
+    scope: string,
+    sourceUrl: string | null,
+    ruleCount: number,
+  ): Promise<void> {
+    await this.prisma.codeRuleLookup.upsert({
+      where: { jurisdictionId_scope: { jurisdictionId, scope } },
+      create: { jurisdictionId, scope, sourceUrl, ruleCount },
+      update: { lastSyncedAt: new Date(), sourceUrl, ruleCount },
+    });
   }
 
   /** Health probe — runs every adapter's healthCheck. */

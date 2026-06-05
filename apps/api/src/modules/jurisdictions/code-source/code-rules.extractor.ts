@@ -13,6 +13,7 @@
  * the existing chat.service degradation pattern.
  */
 import type Anthropic from '@anthropic-ai/sdk';
+import type { CodeSourceDoc } from './code-source.resolver';
 
 export type CodeFamilyLike =
   | 'IBC'
@@ -65,12 +66,48 @@ export function htmlToText(html: string): string {
     .trim();
 }
 
-/** Fetch source page and return trimmed plain text (capped to keep tokens sane). */
+/**
+ * Extract text from a PDF buffer using pdf-parse v2 (pure JS — safe on Render,
+ * no native binaries). v2 exposes a `PDFParse` class (NOT a default callable):
+ * `new PDFParse({ data }).getText()` → `{ text }`. Imported lazily so the module
+ * loads even if the dep is absent in some envs, and always destroyed to free
+ * the underlying pdf.js worker. Returns '' on any failure.
+ */
+async function pdfBufferToText(buf: Buffer): Promise<string> {
+  let parser: { getText(): Promise<{ text: string }>; destroy(): Promise<void> } | null =
+    null;
+  try {
+    const mod = (await import('pdf-parse')) as unknown as {
+      PDFParse: new (opts: { data: Uint8Array }) => {
+        getText(): Promise<{ text: string }>;
+        destroy(): Promise<void>;
+      };
+    };
+    parser = new mod.PDFParse({ data: new Uint8Array(buf) });
+    const out = await parser.getText();
+    return out.text ?? '';
+  } catch {
+    return '';
+  } finally {
+    try {
+      await parser?.destroy();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Fetch a single source doc and return trimmed plain text. Handles both HTML
+ * (strip tags) and PDF (pdf-parse). Returns '' on any failure. `kind` defaults
+ * to inferring from the response content-type / URL.
+ */
 export async function fetchSourceText(
   url: string,
   fetchImpl: typeof fetch = fetch,
   maxChars = 60000,
-  timeoutMs = 12000,
+  timeoutMs = 15000,
+  kind?: 'html' | 'pdf',
 ): Promise<string> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -78,9 +115,19 @@ export async function fetchSourceText(
     const res = await fetchImpl(url, {
       redirect: 'follow',
       signal: ctrl.signal,
-      headers: { 'User-Agent': 'dbm-portal-code-extractor/1.0' },
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (compatible; dbm-portal-code-extractor/1.0)',
+      },
     });
     if (!res.ok) return '';
+    const ctype = res.headers?.get?.('content-type') ?? '';
+    const isPdf = kind === 'pdf' || /pdf/i.test(ctype) || /\.pdf(\?|$)/i.test(url);
+    if (isPdf) {
+      const ab = await res.arrayBuffer();
+      const text = await pdfBufferToText(Buffer.from(ab));
+      return text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, maxChars);
+    }
     const html = await res.text();
     return htmlToText(html).slice(0, maxChars);
   } catch {
@@ -88,6 +135,34 @@ export async function fetchSourceText(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Fetch several docs and concatenate their text with labelled separators so
+ * the LLM can attribute each rule to the right source. Caps total size.
+ */
+export async function fetchDocsText(
+  docs: CodeSourceDoc[],
+  fetchImpl: typeof fetch = fetch,
+  totalMaxChars = 80000,
+): Promise<Array<{ url: string; label: string; text: string }>> {
+  const out: Array<{ url: string; label: string; text: string }> = [];
+  let budget = totalMaxChars;
+  for (const d of docs) {
+    if (budget <= 0) break;
+    const text = await fetchSourceText(
+      d.url,
+      fetchImpl,
+      Math.min(60000, budget),
+      15000,
+      d.kind,
+    );
+    if (text && text.length >= 200) {
+      out.push({ url: d.url, label: d.label, text });
+      budget -= text.length;
+    }
+  }
+  return out;
 }
 
 /** Pure: build the extraction instruction for a given scope + source text. */
@@ -171,34 +246,16 @@ export function parseExtractedRules(
   });
 }
 
-/**
- * Orchestrate fetch → prompt → LLM → parse. Returns [] on any failure or when
- * the Anthropic client is null (key not configured) — never throws.
- */
-export async function extractRules(params: {
-  anthropic: Anthropic | null;
-  cityName: string;
-  scope?: string;
-  sourceUrl: string;
-  fetchImpl?: typeof fetch;
-  model?: string;
-}): Promise<ExtractedRule[]> {
-  const {
-    anthropic,
-    cityName,
-    scope,
-    sourceUrl,
-    fetchImpl = fetch,
-    model = 'claude-sonnet-4-20250514',
-  } = params;
-
-  if (!anthropic) return [];
-
-  const sourceText = await fetchSourceText(sourceUrl, fetchImpl);
-  if (!sourceText || sourceText.length < 200) return [];
-
+/** Run one LLM extraction over a single source's text. Never throws → []. */
+async function extractFromText(
+  anthropic: Anthropic,
+  cityName: string,
+  scope: string | undefined,
+  sourceUrl: string,
+  sourceText: string,
+  model: string,
+): Promise<ExtractedRule[]> {
   const prompt = buildExtractionPrompt(cityName, scope, sourceUrl, sourceText);
-
   try {
     const msg = await anthropic.messages.create({
       model,
@@ -213,4 +270,66 @@ export async function extractRules(params: {
   } catch {
     return [];
   }
+}
+
+/**
+ * Orchestrate fetch → prompt → LLM → parse. Returns [] on any failure or when
+ * the Anthropic client is null (key not configured) — never throws.
+ *
+ * Accepts EITHER a single `sourceUrl` (legacy) OR a `docs` array (preferred).
+ * With `docs`, each doc is fetched + extracted independently so every returned
+ * rule carries the correct source URL/citation. Results are merged + de-duped.
+ */
+export async function extractRules(params: {
+  anthropic: Anthropic | null;
+  cityName: string;
+  scope?: string;
+  sourceUrl?: string;
+  docs?: CodeSourceDoc[];
+  fetchImpl?: typeof fetch;
+  model?: string;
+}): Promise<ExtractedRule[]> {
+  const {
+    anthropic,
+    cityName,
+    scope,
+    sourceUrl,
+    docs,
+    fetchImpl = fetch,
+    model = 'claude-sonnet-4-20250514',
+  } = params;
+
+  if (!anthropic) return [];
+
+  // Multi-doc path (preferred): fetch each .gov source, extract per-doc.
+  if (docs && docs.length > 0) {
+    const fetched = await fetchDocsText(docs, fetchImpl);
+    if (fetched.length === 0) return [];
+    const all: ExtractedRule[] = [];
+    for (const f of fetched) {
+      const rules = await extractFromText(
+        anthropic,
+        cityName,
+        scope,
+        f.url,
+        f.text,
+        model,
+      );
+      all.push(...rules);
+    }
+    // De-dupe across docs by (family|section); keep first (highest-priority doc).
+    const seen = new Set<string>();
+    return all.filter((r) => {
+      const k = `${r.codeFamily}|${r.section}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }
+
+  // Legacy single-URL path.
+  if (!sourceUrl) return [];
+  const sourceText = await fetchSourceText(sourceUrl, fetchImpl);
+  if (!sourceText || sourceText.length < 200) return [];
+  return extractFromText(anthropic, cityName, scope, sourceUrl, sourceText, model);
 }

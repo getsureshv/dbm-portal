@@ -1,61 +1,97 @@
 import {
-  citySlug,
-  stateSlug,
-  candidateSources,
-  probeCodeSource,
-  codeSourceFromConfig,
+  inferKind,
+  codeSourcesFromConfig,
+  resolveCodeSources,
+  orderDocsForScope,
+  CODE_SOURCE_REGISTRY,
+  type CodeSourceDoc,
 } from './code-source.resolver';
 import {
   htmlToText,
   buildExtractionPrompt,
   parseExtractedRules,
+  fetchDocsText,
   extractRules,
 } from './code-rules.extractor';
 
 describe('code-source.resolver', () => {
-  it('slugifies city names and strips "City of" prefix', () => {
-    expect(citySlug('City of Coppell')).toBe('coppell');
-    expect(citySlug('Flower Mound', '-')).toBe('flower-mound');
-    expect(citySlug('St. Louis')).toBe('st_louis');
+  it('inferKind detects pdf vs html', () => {
+    expect(inferKind('https://x/doc.pdf')).toBe('pdf');
+    expect(inferKind('https://x/doc.PDF?v=2')).toBe('pdf');
+    expect(inferKind('https://x/page')).toBe('html');
+    expect(inferKind('https://x/209/Adopted-Codes')).toBe('html');
   });
 
-  it('maps known states and falls back to lowercase', () => {
-    expect(stateSlug('TX')).toBe('texas');
-    expect(stateSlug('zz')).toBe('zz');
+  it('codeSourcesFromConfig reads + validates adapterConfig.codeSources', () => {
+    const cfg = {
+      codeSources: {
+        domain: 'example.gov',
+        docs: [
+          { url: 'https://example.gov/a.pdf', label: 'A' },
+          { url: 'https://example.gov/b', kind: 'html', label: 'B', scopes: ['kitchen'] },
+        ],
+      },
+    };
+    const out = codeSourcesFromConfig(cfg);
+    expect(out?.domain).toBe('example.gov');
+    expect(out?.docs).toHaveLength(2);
+    expect(out?.docs[0].kind).toBe('pdf'); // inferred from .pdf
+    expect(out?.docs[1].kind).toBe('html'); // explicit
+    expect(out?.docs[1].scopes).toEqual(['kitchen']);
   });
 
-  it('builds municode + amlegal + ecode360 candidates in priority order', () => {
-    const c = candidateSources('Coppell', 'TX');
-    expect(c.map((x) => x.platform)).toEqual([
-      'municode',
-      'amlegal',
-      'ecode360',
+  it('codeSourcesFromConfig returns null on missing/invalid input', () => {
+    expect(codeSourcesFromConfig(null)).toBeNull();
+    expect(codeSourcesFromConfig({ other: 1 })).toBeNull();
+    expect(codeSourcesFromConfig({ codeSources: {} })).toBeNull();
+    expect(codeSourcesFromConfig({ codeSources: { docs: [] } })).toBeNull();
+    // doc with non-http url is dropped → empty → null
+    expect(
+      codeSourcesFromConfig({ codeSources: { docs: [{ url: 'ftp://x', label: 'x' }] } }),
+    ).toBeNull();
+  });
+
+  it('codeSourcesFromConfig falls back label to url when missing', () => {
+    const out = codeSourcesFromConfig({
+      codeSources: { docs: [{ url: 'https://x/a.pdf' }] },
+    });
+    expect(out?.docs[0].label).toBe('https://x/a.pdf');
+  });
+
+  it('resolveCodeSources: config override beats registry, then registry, then null', () => {
+    const override = resolveCodeSources('coppell-tx', {
+      codeSources: { docs: [{ url: 'https://override/x.pdf', label: 'O' }] },
+    });
+    expect(override?.docs[0].url).toBe('https://override/x.pdf');
+
+    const registry = resolveCodeSources('coppell-tx', null);
+    expect(registry?.domain).toBe('coppelltx.gov');
+    expect(registry?.docs.length).toBeGreaterThan(0);
+
+    expect(resolveCodeSources('nowhere-zz', null)).toBeNull();
+  });
+
+  it('registry coppell-tx has both a scoped pdf and a general html doc', () => {
+    const c = CODE_SOURCE_REGISTRY['coppell-tx'];
+    const pdf = c.docs.find((d) => d.kind === 'pdf');
+    const html = c.docs.find((d) => d.kind === 'html');
+    expect(pdf?.scopes).toContain('kitchen');
+    expect(html).toBeTruthy();
+  });
+
+  it('orderDocsForScope puts scope-tagged docs first', () => {
+    const docs: CodeSourceDoc[] = [
+      { url: 'https://a', kind: 'html', label: 'General' },
+      { url: 'https://b', kind: 'pdf', label: 'Kitchen', scopes: ['kitchen'] },
+    ];
+    const ordered = orderDocsForScope(docs, 'kitchen');
+    expect(ordered[0].label).toBe('Kitchen');
+    expect(ordered[1].label).toBe('General');
+    // no scope → original order preserved
+    expect(orderDocsForScope(docs).map((d) => d.label)).toEqual([
+      'General',
+      'Kitchen',
     ]);
-    expect(c[0].url).toContain('library.municode.com/texas/coppell');
-  });
-
-  it('probeCodeSource returns the first OK candidate', async () => {
-    const fakeFetch = (async (url: string) =>
-      ({
-        ok: String(url).includes('municode'),
-      }) as Response) as unknown as typeof fetch;
-    const src = await probeCodeSource('Coppell', 'TX', fakeFetch, 100);
-    expect(src.platform).toBe('municode');
-  });
-
-  it('probeCodeSource falls back to unknown when nothing verifies', async () => {
-    const fakeFetch = (async () =>
-      ({ ok: false }) as Response) as unknown as typeof fetch;
-    const src = await probeCodeSource('Nowhere', 'TX', fakeFetch, 100);
-    expect(src.platform).toBe('unknown');
-    expect(src.url).toContain('municode'); // best-effort guess
-  });
-
-  it('reads codeSource back from adapterConfig', () => {
-    const cfg = { codeSource: { platform: 'municode', url: 'https://x' } };
-    expect(codeSourceFromConfig(cfg)?.url).toBe('https://x');
-    expect(codeSourceFromConfig(null)).toBeNull();
-    expect(codeSourceFromConfig({ other: 1 })).toBeNull();
   });
 });
 
@@ -101,30 +137,37 @@ describe('code-rules.extractor', () => {
       anthropic: null,
       cityName: 'Coppell',
       scope: 'kitchen',
-      sourceUrl: 'https://x',
+      docs: [{ url: 'https://x', kind: 'html', label: 'X' }],
     });
     expect(out).toEqual([]);
   });
 
-  it('extractRules returns [] when source text is too short', async () => {
-    const fakeFetch = (async () =>
-      ({ ok: true, text: async () => '<p>tiny</p>' }) as Response) as unknown as typeof fetch;
-    const fakeAnthropic = {
-      messages: { create: async () => ({ content: [] }) },
-    } as never;
-    const out = await extractRules({
-      anthropic: fakeAnthropic,
-      cityName: 'Coppell',
-      sourceUrl: 'https://x',
-      fetchImpl: fakeFetch,
-    });
-    expect(out).toEqual([]);
+  it('fetchDocsText skips short/failed docs and keeps good ones', async () => {
+    const longText = 'Building code text. '.repeat(40);
+    const fakeFetch = (async (url: string) =>
+      ({
+        ok: true,
+        headers: { get: () => 'text/html' },
+        text: async () =>
+          String(url).includes('good') ? `<p>${longText}</p>` : '<p>tiny</p>',
+      }) as Response) as unknown as typeof fetch;
+    const docs: CodeSourceDoc[] = [
+      { url: 'https://good', kind: 'html', label: 'Good' },
+      { url: 'https://short', kind: 'html', label: 'Short' },
+    ];
+    const out = await fetchDocsText(docs, fakeFetch);
+    expect(out).toHaveLength(1);
+    expect(out[0].url).toBe('https://good');
   });
 
-  it('extractRules parses a successful LLM response end-to-end', async () => {
-    const longText = '<p>' + 'Building code section R507 deck requirements. '.repeat(20) + '</p>';
+  it('extractRules with docs fetches + extracts per-doc and keeps source urls', async () => {
+    const longText = 'Building code section R507 deck requirements. '.repeat(20);
     const fakeFetch = (async () =>
-      ({ ok: true, text: async () => longText }) as Response) as unknown as typeof fetch;
+      ({
+        ok: true,
+        headers: { get: () => 'text/html' },
+        text: async () => `<p>${longText}</p>`,
+      }) as Response) as unknown as typeof fetch;
     const fakeAnthropic = {
       messages: {
         create: async () => ({
@@ -141,11 +184,52 @@ describe('code-rules.extractor', () => {
       anthropic: fakeAnthropic,
       cityName: 'Coppell',
       scope: 'deck',
-      sourceUrl: 'https://x',
+      docs: [{ url: 'https://city.gov/a', kind: 'html', label: 'A' }],
       fetchImpl: fakeFetch,
     });
     expect(out).toHaveLength(1);
     expect(out[0].section).toBe('R507.2');
-    expect(out[0].sourceUrl).toBe('https://x');
+    expect(out[0].sourceUrl).toBe('https://city.gov/a');
+  });
+
+  it('extractRules de-dupes across multiple docs by family|section', async () => {
+    const longText = 'Building code section. '.repeat(40);
+    const fakeFetch = (async () =>
+      ({
+        ok: true,
+        headers: { get: () => 'text/html' },
+        text: async () => `<p>${longText}</p>`,
+      }) as Response) as unknown as typeof fetch;
+    const fakeAnthropic = {
+      messages: {
+        create: async () => ({
+          content: [
+            {
+              type: 'text',
+              text: '[{"codeFamily":"IRC","section":"R314.3","title":"Smoke","body":"Smoke alarms.","scopeTags":["kitchen"]}]',
+            },
+          ],
+        }),
+      },
+    } as never;
+    const out = await extractRules({
+      anthropic: fakeAnthropic,
+      cityName: 'Coppell',
+      scope: 'kitchen',
+      docs: [
+        { url: 'https://city.gov/a', kind: 'html', label: 'A' },
+        { url: 'https://city.gov/b', kind: 'html', label: 'B' },
+      ],
+      fetchImpl: fakeFetch,
+    });
+    // both docs return the same section → de-duped to 1
+    expect(out).toHaveLength(1);
+    expect(out[0].sourceUrl).toBe('https://city.gov/a'); // first doc wins
+  });
+
+  it('extractRules returns [] when no docs and no sourceUrl', async () => {
+    const fakeAnthropic = { messages: { create: async () => ({ content: [] }) } } as never;
+    const out = await extractRules({ anthropic: fakeAnthropic, cityName: 'Coppell' });
+    expect(out).toEqual([]);
   });
 });

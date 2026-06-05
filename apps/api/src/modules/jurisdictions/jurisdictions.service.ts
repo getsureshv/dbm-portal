@@ -15,6 +15,7 @@ import { MockAdapter } from './adapters/mock.adapter';
 import { AccelaAdapter } from './adapters/accela.adapter';
 import { ShovelsAdapter } from './adapters/shovels.adapter';
 import { DallasOpenDataAdapter } from './adapters/dallas-opendata.adapter';
+import { SocrataAdapter } from './adapters/socrata.adapter';
 
 @Injectable()
 export class JurisdictionsService {
@@ -173,6 +174,9 @@ export class JurisdictionsService {
     switch (j.vendor) {
       case JurisdictionVendor.DALLAS_OPENDATA:
         return new DallasOpenDataAdapter(cfg);
+      case JurisdictionVendor.SOCRATA:
+        // Generic Socrata: domain/datasetId/fieldMap come from adapterConfig.
+        return new SocrataAdapter(cfg, { vendor: JurisdictionVendor.SOCRATA });
       case JurisdictionVendor.ACCELA:
         return new AccelaAdapter(cfg);
       case JurisdictionVendor.SHOVELS:

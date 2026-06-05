@@ -92,6 +92,60 @@ export async function seedJurisdictions(prisma: PrismaClient) {
     },
   });
 
+  // ── Peer DFW cities (PR #21) ──────────────────────────────
+  // Coppell + neighbors. None publish a public Socrata permits dataset, so
+  // they ride the Shovels aggregator by zip (the adapter resolves address →
+  // geo_id, falling back to the 5-digit zip as geo_id). zipPrefixes use FULL
+  // 5-digit zips to stay precise and avoid colliding with Dallas (752/753),
+  // Flower Mound (75022/75028), or Houston (770/771/772). If Shovels returns
+  // zero rows for a zip, the adapter falls back to mock — never a broken page.
+  const SHOVELS_DFW: Array<{
+    name: string;
+    slug: string;
+    zips: string[];
+  }> = [
+    { name: 'City of Coppell', slug: 'coppell-tx', zips: ['75019', '75099'] },
+    {
+      name: 'City of Carrollton',
+      slug: 'carrollton-tx',
+      zips: ['75006', '75007', '75010'],
+    },
+    {
+      name: 'City of Irving',
+      slug: 'irving-tx',
+      zips: ['75038', '75039', '75060', '75061', '75062', '75063'],
+    },
+    {
+      name: 'City of Lewisville',
+      slug: 'lewisville-tx',
+      zips: ['75029', '75057', '75067', '75077'],
+    },
+    {
+      name: 'City of Grapevine',
+      slug: 'grapevine-tx',
+      zips: ['76051', '76099'],
+    },
+  ];
+
+  const peerCities = [];
+  for (const c of SHOVELS_DFW) {
+    const common = {
+      vendor: JurisdictionVendor.SHOVELS,
+      zipPrefixes: c.zips,
+      countryCode: 'US',
+      timezone: 'America/Chicago',
+      measurementSystem: 'IMPERIAL' as const,
+      defaultCurrency: 'USD',
+      adapterConfig: { jurisdiction: `${c.name.replace(/^City of /, '')},TX` },
+    };
+    const j = await prisma.jurisdiction.upsert({
+      where: { slug: c.slug },
+      update: common,
+      create: { name: c.name, state: 'TX', slug: c.slug, hasZoning: true, ...common },
+    });
+    peerCities.push(j);
+  }
+
   // ── Curated code rules (richer rewrite — PR #19) ──────────
   // 24 rules across deck / adu / kitchen / solar for the three active
   // jurisdictions. Each body follows a Trigger → Required → Verify structure
@@ -364,7 +418,9 @@ export async function seedJurisdictions(prisma: PrismaClient) {
   }
 
   console.log(
-    `  ✓ Jurisdictions: ${dallas.slug}, ${flowerMound.slug}, ${houston.slug}`,
+    `  ✓ Jurisdictions: ${[dallas, flowerMound, houston, ...peerCities]
+      .map((j) => j.slug)
+      .join(', ')}`,
   );
   console.log(`  ✓ Code rules: ${rules.length}`);
 }

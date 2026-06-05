@@ -1,4 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import Anthropic from '@anthropic-ai/sdk';
 import {
   CodeRule,
   Jurisdiction,
@@ -6,6 +8,12 @@ import {
   Permit,
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma.service';
+import {
+  CodeSourceConfig,
+  codeSourceFromConfig,
+  probeCodeSource,
+} from './code-source/code-source.resolver';
+import { extractRules } from './code-source/code-rules.extractor';
 import {
   AdapterConfig,
   JurisdictionAdapter,
@@ -21,7 +29,19 @@ import { SocrataAdapter } from './adapters/socrata.adapter';
 export class JurisdictionsService {
   private readonly logger = new Logger(JurisdictionsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly anthropic: Anthropic | null = null;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config?: ConfigService,
+  ) {
+    const apiKey = this.config?.get<string>('ANTHROPIC_API_KEY');
+    if (apiKey) this.anthropic = new Anthropic({ apiKey });
+    else
+      this.logger.warn(
+        'ANTHROPIC_API_KEY not set — dynamic code-rule extraction disabled (seeded rules still served).',
+      );
+  }
 
   /** All jurisdictions, lightweight rows for dropdowns. */
   async list(): Promise<Jurisdiction[]> {
@@ -146,16 +166,149 @@ export class JurisdictionsService {
     };
   }
 
-  /** Curated code rules for a jurisdiction, optionally filtered by scope tag. */
+  /**
+   * Code rules for a jurisdiction, optionally filtered by scope.
+   *
+   * Resolution order (no pre-seeding for new cities):
+   *   1. Return existing CodeRule rows (seeded cities like Dallas, or rows we
+   *      previously extracted and cached).
+   *   2. If none exist for this scope AND the dynamic cache is stale/absent,
+   *      fetch the city's published municipal code, extract scope-relevant
+   *      rules with the LLM, persist them as CodeRule rows, stamp the
+   *      CodeRuleLookup freshness marker, and return them.
+   *   3. Degrade gracefully to [] (extraction off, source unreachable, etc.).
+   */
   async codeRules(slug: string, scope?: string): Promise<CodeRule[]> {
     const j = await this.getBySlug(slug);
-    return this.prisma.codeRule.findMany({
+    const where = {
+      jurisdictionId: j.id,
+      ...(scope ? { scopeTags: { has: scope } } : {}),
+    };
+    const orderBy = [
+      { codeFamily: 'asc' as const },
+      { section: 'asc' as const },
+    ];
+
+    const existing = await this.prisma.codeRule.findMany({ where, orderBy });
+    if (existing.length > 0) return existing;
+
+    // Nothing curated/cached for this scope — try a dynamic extraction unless a
+    // recent attempt already ran (avoid hammering the source / LLM on every hit,
+    // including the legitimate "source has no such rules" empty result).
+    const fresh = await this.dynamicCodeRules(j, scope);
+    if (fresh) return this.prisma.codeRule.findMany({ where, orderBy });
+    return existing; // []
+  }
+
+  /**
+   * Fetch + extract + persist code rules for (jurisdiction, scope) from the
+   * city's published source. Returns true if an extraction attempt ran (fresh
+   * data may be 0 rules and still counts — the marker prevents re-hammering),
+   * false if skipped because the cache is still fresh. Never throws.
+   */
+  private async dynamicCodeRules(
+    j: Jurisdiction,
+    scope?: string,
+  ): Promise<boolean> {
+    const scopeKey = scope ?? '';
+    const marker = await this.prisma.codeRuleLookup.findUnique({
       where: {
-        jurisdictionId: j.id,
-        ...(scope ? { scopeTags: { has: scope } } : {}),
+        jurisdictionId_scope: { jurisdictionId: j.id, scope: scopeKey },
       },
-      orderBy: [{ codeFamily: 'asc' }, { section: 'asc' }],
     });
+    if (
+      marker &&
+      Date.now() - marker.lastSyncedAt.getTime() < marker.ttlSeconds * 1000
+    ) {
+      return false; // cache fresh — don't re-fetch (even if it yielded 0)
+    }
+
+    // Resolve the city's code source (cached on adapterConfig once known).
+    let source: CodeSourceConfig | null = codeSourceFromConfig(
+      j.adapterConfig,
+    );
+    if (!source) {
+      const probed = await probeCodeSource(j.name, j.state);
+      source = {
+        platform: probed.platform,
+        url: probed.url,
+        resolvedAt: new Date().toISOString(),
+      };
+      // Best-effort persist so we skip the probe next time.
+      try {
+        const cfg =
+          j.adapterConfig && typeof j.adapterConfig === 'object'
+            ? (j.adapterConfig as Record<string, unknown>)
+            : {};
+        await this.prisma.jurisdiction.update({
+          where: { id: j.id },
+          data: { adapterConfig: { ...cfg, codeSource: source } },
+        });
+      } catch (e) {
+        this.logger.warn(`could not persist codeSource for ${j.slug}: ${e}`);
+      }
+    }
+
+    const rules = await extractRules({
+      anthropic: this.anthropic,
+      cityName: j.name,
+      scope,
+      sourceUrl: source.url,
+    });
+
+    // Persist extracted rules (upsert by the CodeRule unique key).
+    for (const r of rules) {
+      try {
+        await this.prisma.codeRule.upsert({
+          where: {
+            jurisdictionId_codeFamily_section: {
+              jurisdictionId: j.id,
+              codeFamily: r.codeFamily,
+              section: r.section,
+            },
+          },
+          create: {
+            jurisdictionId: j.id,
+            codeFamily: r.codeFamily,
+            section: r.section,
+            title: r.title,
+            body: r.body,
+            scopeTags: r.scopeTags,
+            sourceUrl: r.sourceUrl,
+          },
+          update: {
+            title: r.title,
+            body: r.body,
+            scopeTags: r.scopeTags,
+            sourceUrl: r.sourceUrl,
+          },
+        });
+      } catch (e) {
+        this.logger.warn(`codeRule upsert failed (${r.section}): ${e}`);
+      }
+    }
+
+    // Stamp the freshness marker (records the attempt regardless of count).
+    await this.prisma.codeRuleLookup.upsert({
+      where: {
+        jurisdictionId_scope: { jurisdictionId: j.id, scope: scopeKey },
+      },
+      create: {
+        jurisdictionId: j.id,
+        scope: scopeKey,
+        sourceUrl: source.url,
+        ruleCount: rules.length,
+      },
+      update: {
+        lastSyncedAt: new Date(),
+        sourceUrl: source.url,
+        ruleCount: rules.length,
+      },
+    });
+    this.logger.log(
+      `dynamic code rules: ${j.slug} scope="${scopeKey}" → ${rules.length} from ${source.url}`,
+    );
+    return true;
   }
 
   /** Health probe — runs every adapter's healthCheck. */

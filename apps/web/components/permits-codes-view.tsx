@@ -25,6 +25,7 @@ import {
   ApiPermit,
   ApiCodeRule,
 } from '../lib/api';
+import { AutoLinkedBody } from '../lib/citation-autolinker';
 
 export const SCOPES = [
   { value: 'deck', label: 'Add a deck' },
@@ -438,7 +439,10 @@ export default function PermitsCodesView({
                     </span>
                   </div>
                   <h3 className="text-sm font-medium text-gray-900">{r.title}</h3>
-                  <p className="text-xs text-gray-700 mt-1 leading-relaxed">{r.body}</p>
+                  <AutoLinkedBody
+                    text={r.body}
+                    className="text-xs text-gray-700 mt-1 leading-relaxed"
+                  />
                   {r.sourceUrl && (
                     <a
                       href={r.sourceUrl}

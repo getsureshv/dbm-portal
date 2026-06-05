@@ -99,8 +99,15 @@ export class JurisdictionsService {
         Date.now() - lookup.lastSyncedAt.getTime() <
           lookup.ttlSeconds * 1000
       ) {
+        // Read cached permits by the externalIds captured for THIS lookup, not
+        // by Permit.address. Zip-scoped vendors (Shovels) return the same
+        // permits for many addresses, and each Permit row carries only one
+        // address string, so an address match stranded the cache at 0 found.
         const cached = await this.prisma.permit.findMany({
-          where: { jurisdictionId: jurisdiction.id, address },
+          where: {
+            jurisdictionId: jurisdiction.id,
+            externalId: { in: lookup.permitExternalIds },
+          },
           orderBy: { issuedAt: 'desc' },
           take: limit,
         });
@@ -116,6 +123,7 @@ export class JurisdictionsService {
     // Fresh fetch
     const raw = await adapter.getPermitsByAddress({ address, limit });
     const persisted = await this.persistPermits(jurisdiction.id, address, raw);
+    const externalIds = persisted.map((p) => p.externalId);
     await this.prisma.addressLookup.upsert({
       where: {
         address_jurisdictionId: {
@@ -126,8 +134,9 @@ export class JurisdictionsService {
       create: {
         address,
         jurisdictionId: jurisdiction.id,
+        permitExternalIds: externalIds,
       },
-      update: { lastSyncedAt: new Date() },
+      update: { lastSyncedAt: new Date(), permitExternalIds: externalIds },
     });
     return {
       jurisdiction,

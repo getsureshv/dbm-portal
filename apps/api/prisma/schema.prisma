@@ -498,7 +498,8 @@ model ProgressReport {
 
 enum JurisdictionVendor {
   ACCELA           // Accela Construct API (per-agency partnership)
-  DALLAS_OPENDATA  // Dallas Socrata OpenData portal (public, no-auth)
+  DALLAS_OPENDATA  // Dallas Socrata OpenData portal (public, no-auth) — preset of SOCRATA
+  SOCRATA          // generic, config-driven Socrata adapter (any Socrata city via fieldMap)
   SHOVELS          // aggregator fallback
   ETRAKIT          // CentralSquare eTRAKiT (Flower Mound)
   ILMS             // Houston legacy (deferred)

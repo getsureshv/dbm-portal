@@ -545,6 +545,7 @@ model Jurisdiction {
   permits        Permit[]
   codeRules      CodeRule[]
   addressLookups AddressLookup[]
+  codeRuleLookups CodeRuleLookup[]
   @@index([countryCode, state])
   @@map("jurisdictions")
 }
@@ -607,4 +608,21 @@ model AddressLookup {
   jurisdiction   Jurisdiction @relation(fields: [jurisdictionId], references: [id])
   @@unique([address, jurisdictionId])
   @@map("address_lookups")
+}
+
+// Freshness marker for dynamically-extracted code rules. Mirrors AddressLookup:
+// one row per (jurisdiction, scope). When a lookup is stale/absent we re-fetch
+// the city's published code, extract rules with an LLM, upsert them as CodeRule
+// rows, and stamp this marker. No code rules are pre-seeded for new cities.
+model CodeRuleLookup {
+  id             String       @id @default(uuid()) @db.Uuid
+  jurisdictionId String       @map("jurisdiction_id") @db.Uuid
+  scope          String       @default("")            // "" = no-scope/general lookup
+  lastSyncedAt   DateTime     @default(now()) @map("last_synced_at")
+  ttlSeconds     Int          @default(604800) @map("ttl_seconds") // 7d — codes change slowly
+  sourceUrl      String?      @map("source_url")
+  ruleCount      Int          @default(0) @map("rule_count")
+  jurisdiction   Jurisdiction @relation(fields: [jurisdictionId], references: [id])
+  @@unique([jurisdictionId, scope])
+  @@map("code_rule_lookups")
 }

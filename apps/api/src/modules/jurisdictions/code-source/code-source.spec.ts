@@ -8,6 +8,7 @@ import {
 } from './code-source.resolver';
 import {
   htmlToText,
+  pdfBufferToText,
   buildExtractionPrompt,
   parseExtractedRules,
   fetchDocsText,
@@ -104,6 +105,19 @@ describe('code-rules.extractor', () => {
     expect(txt).toContain('Setback > 5 ft');
     expect(txt).not.toContain('bad()');
     expect(txt).not.toContain('<');
+  });
+
+  it('pdfBufferToText extracts text from an uncompressed content stream (dependency-free)', () => {
+    const content =
+      'BT /F1 12 Tf 72 700 Td (Kitchen permit required) Tj T* (GFCI outlets near sink) Tj ET';
+    const pdf = ['%PDF-1.4', 'stream', content, 'endstream', '%%EOF'].join('\n');
+    const txt = pdfBufferToText(Buffer.from(pdf, 'latin1'));
+    expect(txt).toContain('Kitchen permit required');
+    expect(txt).toContain('GFCI outlets near sink');
+  });
+
+  it('pdfBufferToText returns empty string on non-pdf garbage (never throws)', () => {
+    expect(pdfBufferToText(Buffer.from('not a pdf at all'))).toBe('');
   });
 
   it('buildExtractionPrompt includes scope and source url', () => {

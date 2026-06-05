@@ -599,6 +599,11 @@ model AddressLookup {
   jurisdictionId String       @map("jurisdiction_id") @db.Uuid
   lastSyncedAt   DateTime     @default(now()) @map("last_synced_at")
   ttlSeconds     Int          @default(86400) @map("ttl_seconds")
+  // externalIds of the permits returned for THIS lookup. Cached reads use this
+  // instead of matching Permit.address, because zip-scoped vendors (Shovels)
+  // return the same permits for many addresses and a single Permit row can only
+  // carry one address string — matching by address stranded the cache at 0.
+  permitExternalIds String[]  @default([]) @map("permit_external_ids")
   jurisdiction   Jurisdiction @relation(fields: [jurisdictionId], references: [id])
   @@unique([address, jurisdictionId])
   @@map("address_lookups")

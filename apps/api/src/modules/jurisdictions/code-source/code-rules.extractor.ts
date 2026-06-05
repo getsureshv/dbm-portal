@@ -12,6 +12,7 @@
  * caller passes null and extraction is a graceful no-op (returns []), matching
  * the existing chat.service degradation pattern.
  */
+import * as zlib from 'node:zlib';
 import type Anthropic from '@anthropic-ai/sdk';
 import type { CodeSourceDoc } from './code-source.resolver';
 
@@ -67,39 +68,154 @@ export function htmlToText(html: string): string {
 }
 
 /**
- * Extract text from a PDF buffer using pdf-parse v2 (pure JS — safe on Render,
- * no native binaries). v2 exposes a `PDFParse` class (NOT a default callable):
- * `new PDFParse({ data }).getText()` → `{ text }`. Imported lazily so the module
- * loads even if the dep is absent in some envs, and always destroyed to free
- * the underlying pdf.js worker. Returns '' on any failure.
+ * Extract visible text from a PDF buffer with ZERO external dependencies.
+ *
+ * We deliberately do NOT use pdf-parse / pdfjs-dist here: pdf-parse@2 pulls in
+ * a native `@napi-rs/canvas` binary + heavy pdfjs-dist, which fails to install
+ * under Render's `pnpm install --frozen-lockfile` (and isn't on the
+ * pnpm-workspace allowBuilds list). Instead we use only Node's built-in zlib.
+ *
+ * Approach: walk every `stream...endstream` object, FlateDecode-inflate it,
+ * keep only content streams (those containing text operators), and pull the
+ * literal `( … )` / hex `< … >` strings shown by Tj/TJ, emitting newlines on
+ * Td/TD/T* positioning ops. This is not a full renderer — it recovers enough
+ * clean text from ordinary text PDFs (like city permit guides) to feed an LLM.
+ * Returns '' on any failure.
  */
-async function pdfBufferToText(buf: Buffer): Promise<string> {
-  let parser: { getText(): Promise<{ text: string }>; destroy(): Promise<void> } | null =
-    null;
+export function pdfBufferToText(buf: Buffer): string {
   try {
-    const mod = (await import('pdf-parse')) as unknown as {
-      PDFParse: new (opts: { data: Uint8Array }) => {
-        getText(): Promise<{ text: string }>;
-        destroy(): Promise<void>;
-      };
-    };
-    parser = new mod.PDFParse({ data: new Uint8Array(buf) });
-    const out = await parser.getText();
-    return out.text ?? '';
+    const latin1 = buf.toString('latin1');
+    const chunks: string[] = [];
+    const streamRe = /stream\r?\n/g;
+    let m: RegExpExecArray | null;
+    while ((m = streamRe.exec(latin1)) !== null) {
+      const start = m.index + m[0].length;
+      const endIdx = latin1.indexOf('endstream', start);
+      if (endIdx === -1) continue;
+      let e = endIdx;
+      if (latin1[e - 1] === '\n') e--;
+      if (latin1[e - 1] === '\r') e--;
+      const raw = buf.subarray(start, e);
+      let data: Buffer;
+      try {
+        data = zlib.inflateSync(raw); // FlateDecode (zlib-wrapped)
+      } catch {
+        try {
+          data = zlib.inflateRawSync(raw); // raw deflate fallback
+        } catch {
+          data = Buffer.from(raw); // assume uncompressed
+        }
+      }
+      const ds = data.toString('latin1');
+      // Only decode actual content streams; skip font/image/CMap streams.
+      if (!/(?:BT|Tj|TJ)\b/.test(ds)) continue;
+      chunks.push(decodeContentStream(ds));
+    }
+    let t = chunks.join('\n');
+    // Drop non-printable bytes and map high-latin to spaces; collapse whitespace.
+    t = t
+      .replace(/[^\x09\x0A\x20-\x7E\xA0-\xFF]/g, '')
+      .replace(/[\xA0-\xFF]/g, ' ')
+      .replace(/\r\n?/g, '\n')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/ *\n */g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    return t;
   } catch {
     return '';
-  } finally {
-    try {
-      await parser?.destroy();
-    } catch {
-      /* ignore */
-    }
   }
+}
+
+/** Pull text strings from a decoded PDF content stream (Tj/TJ + literal/hex). */
+function decodeContentStream(s: string): string {
+  const out: string[] = [];
+  let i = 0;
+  const n = s.length;
+  while (i < n) {
+    const c = s[i];
+    if (c === '(') {
+      let j = i + 1;
+      let depth = 1;
+      let str = '';
+      while (j < n && depth > 0) {
+        const ch = s[j];
+        if (ch === '\\') {
+          const next = s[j + 1];
+          const map: Record<string, string> = {
+            n: '\n',
+            r: '\r',
+            t: '\t',
+            b: '\b',
+            f: '\f',
+            '(': '(',
+            ')': ')',
+            '\\': '\\',
+          };
+          if (next in map) {
+            str += map[next];
+            j += 2;
+            continue;
+          }
+          const oct = /^[0-7]{1,3}/.exec(s.slice(j + 1, j + 4));
+          if (oct) {
+            str += String.fromCharCode(parseInt(oct[0], 8));
+            j += 1 + oct[0].length;
+            continue;
+          }
+          j += 2;
+          continue;
+        }
+        if (ch === '(') {
+          depth++;
+          str += ch;
+          j++;
+          continue;
+        }
+        if (ch === ')') {
+          depth--;
+          if (depth === 0) {
+            j++;
+            break;
+          }
+          str += ch;
+          j++;
+          continue;
+        }
+        str += ch;
+        j++;
+      }
+      out.push(str);
+      i = j;
+      continue;
+    }
+    if (c === '<' && s[i + 1] !== '<') {
+      const end = s.indexOf('>', i + 1);
+      if (end !== -1) {
+        const hex = s.slice(i + 1, end).replace(/\s+/g, '');
+        let str = '';
+        for (let k = 0; k + 1 < hex.length; k += 2) {
+          str += String.fromCharCode(parseInt(hex.substr(k, 2), 16));
+        }
+        out.push(str);
+        i = end + 1;
+        continue;
+      }
+    }
+    if (c === 'T') {
+      const op = s.substr(i, 2);
+      if (op === 'Td' || op === 'TD' || op === 'T*') out.push('\n');
+      if (op === 'Tj' || op === 'TJ') out.push(' ');
+    }
+    i++;
+  }
+  return out.join('');
 }
 
 /**
  * Fetch a single source doc and return trimmed plain text. Handles both HTML
- * (strip tags) and PDF (pdf-parse). Returns '' on any failure. `kind` defaults
+ * (strip tags) and PDF (dependency-free zlib extractor). Returns '' on any
+ * failure. `kind` defaults
  * to inferring from the response content-type / URL.
  */
 export async function fetchSourceText(
@@ -125,7 +241,7 @@ export async function fetchSourceText(
     const isPdf = kind === 'pdf' || /pdf/i.test(ctype) || /\.pdf(\?|$)/i.test(url);
     if (isPdf) {
       const ab = await res.arrayBuffer();
-      const text = await pdfBufferToText(Buffer.from(ab));
+      const text = pdfBufferToText(Buffer.from(ab));
       return text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, maxChars);
     }
     const html = await res.text();

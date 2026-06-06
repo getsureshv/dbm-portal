@@ -13,6 +13,8 @@ import {
   Bell,
   ChevronDown,
   Scale,
+  Menu,
+  X,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -27,7 +29,24 @@ export default function AuthLayout({
   const pathname = usePathname();
   const { user, loading, logout } = useAuth();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close the mobile drawer whenever the route changes (e.g. after tapping a nav item).
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
+
+  // Prevent body scroll while the mobile drawer is open.
+  useEffect(() => {
+    if (mobileNavOpen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [mobileNavOpen]);
 
   // Close user menu on outside click
   useEffect(() => {
@@ -138,8 +157,33 @@ export default function AuthLayout({
 
   return (
     <div className="flex h-screen bg-slate-50">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0">
+      {/* Mobile drawer backdrop */}
+      {mobileNavOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-gray-900/50 lg:hidden"
+          aria-hidden="true"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+
+      {/*
+        Sidebar.
+        - Desktop (lg+): static, pinned 256px column.
+        - Mobile: fixed off-canvas drawer that slides in over the content.
+      */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-64 max-w-[80%] bg-white border-r border-gray-200 flex flex-col shrink-0 transform transition-transform duration-300 ease-in-out lg:static lg:z-auto lg:max-w-none lg:translate-x-0 ${
+          mobileNavOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
+        }`}
+      >
+        {/* Mobile-only close button */}
+        <button
+          onClick={() => setMobileNavOpen(false)}
+          className="lg:hidden absolute top-4 right-3 p-2 text-gray-400 hover:text-gray-600 rounded-lg"
+          aria-label="Close menu"
+        >
+          <X size={20} />
+        </button>
         {/* Logo */}
         <div className="px-6 py-5 border-b border-gray-100">
           <div className="flex items-center gap-2">
@@ -200,12 +244,25 @@ export default function AuthLayout({
       </aside>
 
       {/* Main area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Top Bar */}
-        <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shrink-0">
-          {/* Left: breadcrumb / page context */}
-          <div className="flex items-center">
-            {/* Empty placeholder for breadcrumbs or page title */}
+        <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between shrink-0">
+          {/* Left: hamburger (mobile) + breadcrumb / page context */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setMobileNavOpen(true)}
+              className="lg:hidden p-2 -ml-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+              aria-label="Open menu"
+            >
+              <Menu size={22} />
+            </button>
+            {/* Compact brand on mobile so the bar isn't empty */}
+            <Link href="/dashboard" className="lg:hidden flex items-center gap-1.5">
+              <div className="w-7 h-7 rounded-lg bg-navy flex items-center justify-center">
+                <span className="text-gold font-bold text-xs">D</span>
+              </div>
+              <span className="text-base font-bold text-gray-900 tracking-tight">DBM</span>
+            </Link>
           </div>
 
           {/* Right: notifications + user avatar */}

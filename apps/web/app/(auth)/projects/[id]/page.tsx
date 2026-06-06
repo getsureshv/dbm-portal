@@ -512,7 +512,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
 
   if (error || !project) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 flex items-center gap-3 text-red-600">
           <AlertCircle size={20} />
           <span>{error || 'Project not found'}</span>
@@ -525,7 +525,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const statusColor = STATUS_COLORS[project.status] || 'bg-gray-50 text-gray-500 border-gray-200';
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 lg:space-y-8">
       {/* Project Header */}
       <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
         <div className="flex items-start justify-between mb-4">

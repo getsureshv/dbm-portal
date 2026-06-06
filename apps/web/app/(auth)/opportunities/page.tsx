@@ -54,7 +54,7 @@ export default function OpportunitiesPage() {
   }, [fetchOpportunities]);
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 lg:space-y-8">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Available Opportunities</h1>

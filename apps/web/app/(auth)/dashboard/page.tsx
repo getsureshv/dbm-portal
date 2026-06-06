@@ -57,10 +57,10 @@ export default function DashboardPage() {
     ];
 
     return (
-      <div className="p-8 space-y-8">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6 lg:space-y-8">
         {/* Welcome Header */}
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {displayName}</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Welcome back, {displayName}</h1>
           <p className="text-gray-500">Here&apos;s your provider dashboard</p>
         </div>
 
@@ -123,10 +123,10 @@ export default function DashboardPage() {
 
   // OWNER dashboard (default)
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 lg:space-y-8">
       {/* Welcome Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {displayName}</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Welcome back, {displayName}</h1>
         <p className="text-gray-500">Here&apos;s what&apos;s happening with your projects</p>
       </div>
 

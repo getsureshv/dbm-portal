@@ -431,7 +431,7 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
 
   if (projectError || !project) {
     return (
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 flex items-center gap-3 text-red-600">
           <AlertCircle size={20} />
           <span>{projectError || 'Project not found'}</span>

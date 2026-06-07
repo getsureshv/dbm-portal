@@ -164,7 +164,7 @@ describe('code-rules.extractor', () => {
         headers: { get: () => 'text/html' },
         text: async () =>
           String(url).includes('good') ? `<p>${longText}</p>` : '<p>tiny</p>',
-      }) as Response) as unknown as typeof fetch;
+      }) as unknown) as typeof fetch;
     const docs: CodeSourceDoc[] = [
       { url: 'https://good', kind: 'html', label: 'Good' },
       { url: 'https://short', kind: 'html', label: 'Short' },
@@ -181,7 +181,7 @@ describe('code-rules.extractor', () => {
         ok: true,
         headers: { get: () => 'text/html' },
         text: async () => `<p>${longText}</p>`,
-      }) as Response) as unknown as typeof fetch;
+      }) as unknown) as typeof fetch;
     const fakeAnthropic = {
       messages: {
         create: async () => ({
@@ -213,7 +213,7 @@ describe('code-rules.extractor', () => {
         ok: true,
         headers: { get: () => 'text/html' },
         text: async () => `<p>${longText}</p>`,
-      }) as Response) as unknown as typeof fetch;
+      }) as unknown) as typeof fetch;
     const fakeAnthropic = {
       messages: {
         create: async () => ({

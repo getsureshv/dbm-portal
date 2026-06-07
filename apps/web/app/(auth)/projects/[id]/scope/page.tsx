@@ -460,9 +460,9 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
   const emptySections = SCOPE_SECTIONS.filter((s) => !scopeFieldValues[s.fieldKey]);
 
   return (
-    <div className="flex h-full bg-slate-50">
-      {/* Left Panel - SOW Preview (60%) */}
-      <div className="w-3/5 border-r border-gray-200 flex flex-col overflow-hidden">
+    <div className="flex flex-col lg:flex-row lg:h-full bg-slate-50">
+      {/* Left Panel - SOW Preview (60% on desktop, full-width stacked on mobile) */}
+      <div className="w-full lg:w-3/5 border-b lg:border-b-0 lg:border-r border-gray-200 flex flex-col lg:overflow-hidden">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between">
           <Link
@@ -479,9 +479,9 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
         </div>
 
         {/* Progress Bar + PDF Actions */}
-        <div className="bg-white border-b border-gray-200 p-6">
+        <div className="bg-white border-b border-gray-200 p-4 sm:p-6">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="font-semibold text-gray-900">Scope Completeness</h2>
+            <h2 className="font-semibold text-gray-900 text-sm sm:text-base">Scope Completeness</h2>
             <span className="text-sm text-amber-600 font-medium">{completeness}%</span>
           </div>
           <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -491,12 +491,12 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
             />
           </div>
           {completeness >= 65 && (
-            <div className="flex items-center justify-between mt-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-3">
               <p className="text-xs text-green-600 flex items-center gap-1">
-                <CheckCircle2 size={12} />
+                <CheckCircle2 size={12} className="flex-shrink-0" />
                 Scope is ready for PDF generation
               </p>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-shrink-0">
                 {pdfReady && (
                   <button
                     onClick={handleDownloadPdf}
@@ -542,7 +542,7 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
         </div>
 
         {/* SOW Preview */}
-        <div className="flex-1 overflow-auto p-8 space-y-6">
+        <div className="flex-1 lg:overflow-auto p-4 sm:p-6 lg:p-8 space-y-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 mb-1">Scope of Work</h1>
             <p className="text-gray-500 text-sm">{project.title} &mdash; {project.type}</p>
@@ -598,7 +598,7 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
               <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide">
                 Still Needed — click to start
               </h3>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {emptySections.map((section) => {
                   const isActive = activeSection === section.fieldKey;
                   const isUpdated = recentlyUpdated.has(section.fieldKey);
@@ -646,8 +646,8 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
         </div>
       </div>
 
-      {/* Right Panel - Chat (40%) */}
-      <div className="w-2/5 flex flex-col bg-gray-50">
+      {/* Right Panel - Chat (40% on desktop, full-width stacked on mobile) */}
+      <div className="w-full lg:w-2/5 flex flex-col bg-gray-50 min-h-[60vh] lg:min-h-0">
         {/* AI Unavailable Warning */}
         {aiUnavailable && (
           <div className="bg-amber-50 border-b border-amber-200 p-4 flex items-start gap-3">
@@ -676,7 +676,7 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
         )}
 
         {/* Chat Messages */}
-        <div className="flex-1 overflow-auto p-6 space-y-4">
+        <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4">
           {messages.map((message, idx) => (
             <div
               key={message.id}
@@ -735,7 +735,7 @@ export default function ScopeArchitectPage({ params }: { params: { id: string } 
         </div>
 
         {/* Chat Input */}
-        <div className="border-t border-gray-200 p-6 space-y-3">
+        <div className="border-t border-gray-200 p-4 sm:p-6 space-y-3">
           <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-4 py-3 focus-within:border-amber-500 transition-colors">
             <input
               ref={inputRef}

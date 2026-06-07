@@ -52,10 +52,25 @@ export class JurisdictionsController {
     });
   }
 
+  @Get('code-rules-status')
+  @ApiOperation({
+    summary:
+      'Diagnostic: is dynamic code-rule extraction wired up (Anthropic client, env, commit) and what sources/markers exist',
+  })
+  @ApiQuery({ name: 'slug', required: false })
+  codeRulesStatus(@Query('slug') slug?: string) {
+    return this.svc.codeRulesStatus(slug);
+  }
+
   @Get(':slug/code-rules')
   @ApiOperation({ summary: 'Curated code rules for a jurisdiction (optional scope filter)' })
   @ApiQuery({ name: 'scope', required: false, description: 'e.g. deck, adu, kitchen, solar' })
-  codeRules(@Param('slug') slug: string, @Query('scope') scope?: string) {
-    return this.svc.codeRules(slug, scope);
+  @ApiQuery({ name: 'force', required: false, type: Boolean, description: 'Bypass cache + re-extract live' })
+  codeRules(
+    @Param('slug') slug: string,
+    @Query('scope') scope?: string,
+    @Query('force') force?: string,
+  ) {
+    return this.svc.codeRules(slug, scope, force === 'true');
   }
 }

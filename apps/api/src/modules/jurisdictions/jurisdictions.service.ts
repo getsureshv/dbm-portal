@@ -184,7 +184,11 @@ export class JurisdictionsService {
    *      CodeRuleLookup freshness marker, and return them.
    *   3. Degrade gracefully to [] (extraction off, source unreachable, etc.).
    */
-  async codeRules(slug: string, scope?: string): Promise<CodeRule[]> {
+  async codeRules(
+    slug: string,
+    scope?: string,
+    force = false,
+  ): Promise<CodeRule[]> {
     const j = await this.getBySlug(slug);
     const where = {
       jurisdictionId: j.id,
@@ -195,15 +199,63 @@ export class JurisdictionsService {
       { section: 'asc' as const },
     ];
 
-    const existing = await this.prisma.codeRule.findMany({ where, orderBy });
-    if (existing.length > 0) return existing;
+    // When force=true, skip the seeded/cached short-circuit so we re-run a live
+    // extraction (still respects nothing — overwrites via upsert). Seeded rows
+    // are never deleted; force just refreshes dynamic ones.
+    if (!force) {
+      const existing = await this.prisma.codeRule.findMany({ where, orderBy });
+      if (existing.length > 0) return existing;
+    }
 
     // Nothing curated/cached for this scope — try a dynamic extraction unless a
     // recent attempt already ran (avoid hammering the source / LLM on every hit,
     // including the legitimate "source has no such rules" empty result).
-    const fresh = await this.dynamicCodeRules(j, scope);
+    const fresh = await this.dynamicCodeRules(j, scope, force);
     if (fresh) return this.prisma.codeRule.findMany({ where, orderBy });
-    return existing; // []
+    return this.prisma.codeRule.findMany({ where, orderBy });
+  }
+
+  /**
+   * Diagnostic: reports whether dynamic code-rule extraction is wired up at
+   * runtime (Anthropic client initialized, env var present), what .gov sources
+   * resolve for a slug, and the current cache marker. Safe to expose — returns
+   * NO secret values (only booleans + counts + public source URLs).
+   */
+  async codeRulesStatus(slug?: string) {
+    const base = {
+      anthropicClientInitialized: this.anthropic !== null,
+      anthropicEnvPresent: Boolean(process.env.ANTHROPIC_API_KEY),
+      commit:
+        process.env.RENDER_GIT_COMMIT ??
+        process.env.GIT_COMMIT ??
+        process.env.SOURCE_VERSION ??
+        'unknown',
+    };
+    if (!slug) return base;
+    try {
+      const j = await this.getBySlug(slug);
+      const sources = resolveCodeSources(j.slug, j.adapterConfig);
+      const markers = await this.prisma.codeRuleLookup.findMany({
+        where: { jurisdictionId: j.id },
+      });
+      const ruleCount = await this.prisma.codeRule.count({
+        where: { jurisdictionId: j.id },
+      });
+      return {
+        ...base,
+        slug: j.slug,
+        hasSource: Boolean(sources && sources.docs.length > 0),
+        sourceDocs: sources?.docs.map((d) => ({ url: d.url, kind: d.kind })) ?? [],
+        totalRuleCount: ruleCount,
+        markers: markers.map((m) => ({
+          scope: m.scope,
+          ruleCount: m.ruleCount,
+          lastSyncedAt: m.lastSyncedAt,
+        })),
+      };
+    } catch (e) {
+      return { ...base, slug, error: String(e) };
+    }
   }
 
   /**
@@ -215,18 +267,21 @@ export class JurisdictionsService {
   private async dynamicCodeRules(
     j: Jurisdiction,
     scope?: string,
+    force = false,
   ): Promise<boolean> {
     const scopeKey = scope ?? '';
-    const marker = await this.prisma.codeRuleLookup.findUnique({
-      where: {
-        jurisdictionId_scope: { jurisdictionId: j.id, scope: scopeKey },
-      },
-    });
-    if (
-      marker &&
-      Date.now() - marker.lastSyncedAt.getTime() < marker.ttlSeconds * 1000
-    ) {
-      return false; // cache fresh — don't re-fetch (even if it yielded 0)
+    if (!force) {
+      const marker = await this.prisma.codeRuleLookup.findUnique({
+        where: {
+          jurisdictionId_scope: { jurisdictionId: j.id, scope: scopeKey },
+        },
+      });
+      if (
+        marker &&
+        Date.now() - marker.lastSyncedAt.getTime() < marker.ttlSeconds * 1000
+      ) {
+        return false; // cache fresh — don't re-fetch (even if it yielded 0)
+      }
     }
 
     // Resolve the city's official .gov code sources (adapterConfig override

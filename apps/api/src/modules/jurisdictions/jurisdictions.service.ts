@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import {
@@ -32,9 +32,16 @@ export class JurisdictionsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly config?: ConfigService,
+    @Optional() private readonly config?: ConfigService,
   ) {
-    const apiKey = this.config?.get<string>('ANTHROPIC_API_KEY');
+    // Read from ConfigService when available (app runtime), falling back to
+    // process.env so the key is picked up even if ConfigService isn't injected
+    // (e.g. unit tests that only provide PrismaService). Avoid the
+    // `.get<string>()` type-argument form here: on the optional `config?` type
+    // it triggers TS2347 ("Untyped function calls may not accept type
+    // arguments") and breaks `nest build`.
+    const fromConfig = this.config?.get('ANTHROPIC_API_KEY') as string | undefined;
+    const apiKey = fromConfig ?? process.env.ANTHROPIC_API_KEY;
     if (apiKey) this.anthropic = new Anthropic({ apiKey });
     else
       this.logger.warn(

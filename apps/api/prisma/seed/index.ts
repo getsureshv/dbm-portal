@@ -1,5 +1,6 @@
 import { PrismaClient, TradeGroup, LicenseStatus } from '@prisma/client';
 import { seedJurisdictions } from './jurisdictions';
+import { seedPersonas } from './personas';
 
 const prisma = new PrismaClient();
 
@@ -332,6 +333,10 @@ async function main() {
   console.log(`✓ Created feature flag: ${featureFlag.key}`);
 
   await seedJurisdictions(prisma);
+
+  // Persona & Access Management: entity registry, seed personas, and back-fill
+  // user-persona assignments from legacy role columns. Idempotent.
+  await seedPersonas(prisma);
 
   console.log('\n✅ Database seed completed successfully!');
 }

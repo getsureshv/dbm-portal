@@ -16,22 +16,27 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
 import { AuthGuard } from '../auth/auth.guard';
+import { PermissionGuard } from '../access/permission.guard';
+import { RequirePermission } from '../access/require-permission.decorator';
 import { ProjectsService } from './projects.service';
 import { ScopePdfService } from './scope-pdf.service';
+import { PermissionsService } from '../access/permissions.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 
 @ApiTags('Projects')
 @Controller('projects')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, PermissionGuard)
 @ApiBearerAuth()
 export class ProjectsController {
   constructor(
     private projectsService: ProjectsService,
     private scopePdfService: ScopePdfService,
+    private permissions: PermissionsService,
   ) {}
 
   @Post()
+  @RequirePermission('create', 'project')
   @ApiOperation({ summary: 'Create a new project' })
   async createProject(
     @Req() req: any,
@@ -42,10 +47,16 @@ export class ProjectsController {
   }
 
   @Get()
+  @RequirePermission('read', 'project')
   @ApiOperation({ summary: "List caller's projects" })
   async listProjects(@Req() req: any) {
     const userId = req.userId;
-    return this.projectsService.listProjects(userId);
+    // FR-16: list is scoped by the access engine (admin sees all, client sees
+    // own, plus any granted records). The :id-less route has no record, so the
+    // PermissionGuard only checks the action match here; the actual row
+    // filtering happens in the service via scopeFilter.
+    const scope = await this.permissions.scopeFilter(userId, 'read', 'project');
+    return this.projectsService.listProjectsScoped(userId, scope);
   }
 
   @Get('opportunities')
@@ -64,6 +75,7 @@ export class ProjectsController {
   }
 
   @Post(':id/scope/generate-pdf')
+  @RequirePermission('update', 'project')
   @ApiOperation({ summary: 'Generate a Scope of Work PDF and upload to S3' })
   async generateScopePdf(@Req() req: any, @Param('id') id: string) {
     const userId = req.userId;
@@ -71,6 +83,7 @@ export class ProjectsController {
   }
 
   @Get(':id/scope/pdf')
+  @RequirePermission('read', 'project')
   @ApiOperation({ summary: 'Download the generated Scope of Work PDF' })
   async downloadScopePdf(
     @Req() req: any,
@@ -88,6 +101,7 @@ export class ProjectsController {
   }
 
   @Get(':id')
+  @RequirePermission('read', 'project')
   @ApiOperation({ summary: 'Get project by ID with documents and scopeDocument' })
   async getProject(@Req() req: any, @Param('id') id: string) {
     const userId = req.userId;
@@ -95,6 +109,7 @@ export class ProjectsController {
   }
 
   @Patch(':id')
+  @RequirePermission('update', 'project')
   @ApiOperation({ summary: 'Update mutable project fields' })
   async updateProject(
     @Req() req: any,
@@ -107,6 +122,7 @@ export class ProjectsController {
 
   @Delete(':id')
   @HttpCode(204)
+  @RequirePermission('delete', 'project')
   @ApiOperation({ summary: 'Soft delete a project' })
   async deleteProject(@Req() req: any, @Param('id') id: string) {
     const userId = req.userId;
@@ -114,6 +130,7 @@ export class ProjectsController {
   }
 
   @Post(':id/documents')
+  @RequirePermission('update', 'project')
   @ApiOperation({ summary: 'Record a document upload' })
   async addDocument(
     @Req() req: any,

@@ -7,6 +7,12 @@ import {
 import { PrismaService } from '../../common/prisma.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
+import {
+  scopePrismaWhere,
+  DENY_ALL,
+  type ScopeWhere,
+} from '../access/scope-filter.helper';
+import type { ScopeFilterDescriptor } from '../access/engine/permission-engine';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -54,6 +60,32 @@ export class ProjectsService {
         ownerId: userId,
         deletedAt: null,
       },
+      include: {
+        documents: true,
+        scopeDocument: true,
+      },
+    });
+  }
+
+  /**
+   * FR-16 — list projects filtered by the caller's effective access scope.
+   * The controller resolves the {@link ScopeFilterDescriptor} via the access
+   * engine; this method turns it into a Prisma where-clause. For a backfilled
+   * client (scope OWN) this is identical to {@link listProjects}; for an admin
+   * (scope ALL) it returns every non-deleted project; granted record ids are
+   * unioned in. No participation table exists yet, so ASSIGNED contributes
+   * nothing for now.
+   */
+  async listProjectsScoped(userId: string, scope: ScopeFilterDescriptor) {
+    const where: ScopeWhere = scopePrismaWhere(scope, {
+      ownerField: 'ownerId',
+      userId,
+      participantRecordIds: [], // no project_invitations model yet
+    });
+    if (where === DENY_ALL) return [];
+
+    return this.prisma.project.findMany({
+      where: { deletedAt: null, ...(where as Record<string, any>) },
       include: {
         documents: true,
         scopeDocument: true,

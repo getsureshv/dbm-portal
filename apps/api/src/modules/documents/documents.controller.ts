@@ -10,16 +10,19 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
+import { PermissionGuard } from '../access/permission.guard';
+import { RequirePermission } from '../access/require-permission.decorator';
 import { DocumentsService } from './documents.service';
 
 @ApiTags('documents')
 @ApiBearerAuth()
 @Controller('documents')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, PermissionGuard)
 export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
   @Post(':id/scan')
+  @RequirePermission('update', 'document')
   @ApiOperation({ summary: 'Scan a document using AI to extract text content' })
   async scanDocument(@Req() req: any, @Param('id') id: string) {
     const userId = req.userId;
@@ -27,6 +30,7 @@ export class DocumentsController {
   }
 
   @Get(':id/text')
+  @RequirePermission('read', 'document')
   @ApiOperation({ summary: 'Get previously extracted text for a document' })
   async getDocumentText(@Req() req: any, @Param('id') id: string) {
     const userId = req.userId;
@@ -34,6 +38,7 @@ export class DocumentsController {
   }
 
   @Post(':id/convert-to-scope')
+  @RequirePermission('update', 'document')
   @ApiOperation({
     summary:
       'Use AI Scope Architect to convert a scanned document into the project scope',
@@ -45,6 +50,7 @@ export class DocumentsController {
 
   @Delete(':id')
   @HttpCode(204)
+  @RequirePermission('delete', 'document')
   @ApiOperation({ summary: 'Delete a project document and its S3 object' })
   async deleteDocument(@Req() req: any, @Param('id') id: string) {
     const userId = req.userId;

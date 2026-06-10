@@ -14,6 +14,7 @@ import { PersonaAssignmentService } from './persona-assignment.service';
 function mockPrisma(overrides: any = {}) {
   const base: any = {
     persona: { findUnique: jest.fn().mockResolvedValue(null) },
+    user: { findUnique: jest.fn().mockResolvedValue({ id: 'u1' }) },
     userPersona: {
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
@@ -180,6 +181,129 @@ describe('PersonaAssignmentService.assignFromRole', () => {
       status: 'ACTIVE',
     });
     expect(prisma.userPersona.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('PersonaAssignmentService.adminAssign', () => {
+  it('creates an ACTIVE assignment with assignedBy/expiry and audits it', async () => {
+    const prisma = mockPrisma({
+      persona: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'p-sup', status: 'ACTIVE' }),
+      },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: 'u7' }) },
+    });
+    const perms = mockPermissions();
+    const audit = mockAudit();
+    const svc = new PersonaAssignmentService(prisma, perms, audit);
+
+    await svc.adminAssign('u7', 'p-sup', { expiresAt: '2026-12-31T00:00:00Z' }, 'admin1');
+
+    expect(prisma.userPersona.create).toHaveBeenCalledWith({
+      data: {
+        userId: 'u7',
+        personaId: 'p-sup',
+        status: 'ACTIVE',
+        assignedBy: 'admin1',
+        expiresAt: new Date('2026-12-31T00:00:00Z'),
+      },
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'user_persona.admin_assigned' }),
+      prisma,
+    );
+    expect(perms.bust).toHaveBeenCalledWith('u7');
+  });
+
+  it('is idempotent: returns the existing row without recreating', async () => {
+    const prisma = mockPrisma({
+      persona: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'p-sup', status: 'ACTIVE' }),
+      },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: 'u7' }) },
+      userPersona: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'up1', status: 'ACTIVE' }),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+    });
+    const svc = new PersonaAssignmentService(prisma, mockPermissions(), mockAudit());
+    const res = await svc.adminAssign('u7', 'p-sup', {}, 'admin1');
+    expect(res).toEqual({ id: 'up1', status: 'ACTIVE' });
+    expect(prisma.userPersona.create).not.toHaveBeenCalled();
+  });
+
+  it('throws if the persona is missing or archived', async () => {
+    const prisma = mockPrisma({
+      persona: { findUnique: jest.fn().mockResolvedValue(null) },
+    });
+    const svc = new PersonaAssignmentService(prisma, mockPermissions(), mockAudit());
+    await expect(svc.adminAssign('u7', 'gone', {}, 'admin1')).rejects.toThrow();
+  });
+
+  it('throws if the user does not exist', async () => {
+    const prisma = mockPrisma({
+      persona: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'p-sup', status: 'ACTIVE' }),
+      },
+      user: { findUnique: jest.fn().mockResolvedValue(null) },
+    });
+    const svc = new PersonaAssignmentService(prisma, mockPermissions(), mockAudit());
+    await expect(svc.adminAssign('ghost', 'p-sup', {}, 'admin1')).rejects.toThrow();
+  });
+});
+
+describe('PersonaAssignmentService.revoke', () => {
+  it('flips an ACTIVE assignment to REVOKED, audits, and busts cache', async () => {
+    const prisma = mockPrisma({
+      userPersona: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'up1', status: 'ACTIVE' }),
+        create: jest.fn(),
+        update: jest.fn().mockResolvedValue({ id: 'up1', status: 'REVOKED' }),
+      },
+    });
+    const perms = mockPermissions();
+    const audit = mockAudit();
+    const svc = new PersonaAssignmentService(prisma, perms, audit);
+
+    const res = await svc.revoke('u8', 'p-sup', 'admin1');
+
+    expect(res).toEqual({ userId: 'u8', personaId: 'p-sup', status: 'REVOKED' });
+    expect(prisma.userPersona.update).toHaveBeenCalledWith({
+      where: { userId_personaId: { userId: 'u8', personaId: 'p-sup' } },
+      data: { status: 'REVOKED' },
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'user_persona.revoked' }),
+      prisma,
+    );
+    expect(perms.bust).toHaveBeenCalledWith('u8');
+  });
+
+  it('is a no-op if already REVOKED (no update, no bust)', async () => {
+    const prisma = mockPrisma({
+      userPersona: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'up1', status: 'REVOKED' }),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+    });
+    const perms = mockPermissions();
+    const svc = new PersonaAssignmentService(prisma, perms, mockAudit());
+    await svc.revoke('u8', 'p-sup', 'admin1');
+    expect(prisma.userPersona.update).not.toHaveBeenCalled();
+    expect(perms.bust).not.toHaveBeenCalled();
+  });
+
+  it('throws if the assignment does not exist', async () => {
+    const prisma = mockPrisma({
+      userPersona: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+    });
+    const svc = new PersonaAssignmentService(prisma, mockPermissions(), mockAudit());
+    await expect(svc.revoke('u8', 'nope', 'admin1')).rejects.toThrow();
   });
 });
 

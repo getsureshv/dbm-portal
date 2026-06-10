@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { PermissionsService } from './permissions.service';
 import { AuditService } from './audit.service';
@@ -98,6 +98,87 @@ export class PersonaAssignmentService {
 
     this.permissions.bust(userId);
     return { personaSlug: persona.slug, status: existing?.status ?? status };
+  }
+
+  /**
+   * Admin assigns a persona to a user (US-09). Optional expiry. Idempotent —
+   * if the user already holds the persona, returns the existing row untouched.
+   * Lands ACTIVE (admin action, not a self-service signup). Atomic + audited.
+   */
+  async adminAssign(
+    userId: string,
+    personaId: string,
+    opts: { expiresAt?: string | null } = {},
+    actorId?: string,
+  ) {
+    const persona = await this.prisma.persona.findUnique({
+      where: { id: personaId },
+      select: { id: true, status: true },
+    });
+    if (!persona || persona.status !== 'ACTIVE') {
+      throw new NotFoundException('Persona not found or archived');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const existing = await this.prisma.userPersona.findUnique({
+      where: { userId_personaId: { userId, personaId } },
+    });
+    if (existing) return existing;
+
+    const expiresAt = opts.expiresAt ? new Date(opts.expiresAt) : null;
+    const row = await this.prisma.$transaction(async (tx) => {
+      const r = await tx.userPersona.create({
+        data: { userId, personaId, status: 'ACTIVE', assignedBy: actorId ?? null, expiresAt },
+      });
+      await this.audit.record(
+        {
+          actorId: actorId ?? null,
+          action: 'user_persona.admin_assigned',
+          subjectType: 'user_persona',
+          subjectId: userId,
+          before: null,
+          after: r,
+        },
+        tx,
+      );
+      return r;
+    });
+    this.permissions.bust(userId);
+    return row;
+  }
+
+  /** Admin revokes a user's persona (US-09). Atomic + audited. */
+  async revoke(userId: string, personaId: string, actorId?: string) {
+    const before = await this.prisma.userPersona.findUnique({
+      where: { userId_personaId: { userId, personaId } },
+    });
+    if (!before) throw new NotFoundException('Assignment not found');
+
+    if (before.status !== 'REVOKED') {
+      await this.prisma.$transaction(async (tx) => {
+        const after = await tx.userPersona.update({
+          where: { userId_personaId: { userId, personaId } },
+          data: { status: 'REVOKED' },
+        });
+        await this.audit.record(
+          {
+            actorId: actorId ?? null,
+            action: 'user_persona.revoked',
+            subjectType: 'user_persona',
+            subjectId: userId,
+            before,
+            after,
+          },
+          tx,
+        );
+      });
+      this.permissions.bust(userId);
+    }
+    return { userId, personaId, status: 'REVOKED' as const };
   }
 
   /**

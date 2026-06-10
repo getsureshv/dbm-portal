@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { PermissionsService } from './permissions.service';
+import { AuditService } from './audit.service';
 
 export interface AccessPrincipal {
   /** USER or PERSONA */
@@ -38,9 +39,10 @@ export class RecordGrantsService {
   constructor(
     private prisma: PrismaService,
     private permissions: PermissionsService,
+    private audit: AuditService,
   ) {}
 
-  /** Issue a record grant (FR-11). */
+  /** Issue a record grant (FR-11). Grant row + audit event commit atomically. */
   async create(input: {
     entity: string;
     recordId: string;
@@ -71,35 +73,65 @@ export class RecordGrantsService {
       throw new BadRequestException('Invalid expiresAt');
     }
 
-    const grant = await this.prisma.recordGrant.create({
-      data: {
-        entity: input.entity,
-        recordId: input.recordId,
-        granteeType: input.granteeType,
-        granteeId: input.granteeId,
-        actions: input.actions,
-        reason: input.reason,
-        grantedBy: input.grantedBy,
-        expiresAt,
-        status: 'ACTIVE',
-      },
+    const grant = await this.prisma.$transaction(async (tx) => {
+      const g = await tx.recordGrant.create({
+        data: {
+          entity: input.entity,
+          recordId: input.recordId,
+          granteeType: input.granteeType,
+          granteeId: input.granteeId,
+          actions: input.actions,
+          reason: input.reason,
+          grantedBy: input.grantedBy,
+          expiresAt,
+          status: 'ACTIVE',
+        },
+      });
+      await this.audit.record(
+        {
+          actorId: input.grantedBy,
+          action: 'record_grant.created',
+          subjectType: 'record_grant',
+          subjectId: g.id,
+          before: null,
+          after: g,
+        },
+        tx,
+      );
+      return g;
     });
 
     await this.bustGrantee(input.granteeType, input.granteeId);
     return grant;
   }
 
-  /** Revoke a record grant (FR-12). Idempotent on an already-inactive grant. */
-  async revoke(grantId: string) {
+  /**
+   * Revoke a record grant (FR-12). Idempotent on an already-inactive grant.
+   * Status flip + audit event commit atomically.
+   */
+  async revoke(grantId: string, actorId?: string) {
     const grant = await this.prisma.recordGrant.findUnique({
       where: { id: grantId },
     });
     if (!grant) throw new NotFoundException('Record grant not found');
 
     if (grant.status === 'ACTIVE') {
-      await this.prisma.recordGrant.update({
-        where: { id: grantId },
-        data: { status: 'REVOKED' },
+      await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.recordGrant.update({
+          where: { id: grantId },
+          data: { status: 'REVOKED' },
+        });
+        await this.audit.record(
+          {
+            actorId: actorId ?? null,
+            action: 'record_grant.revoked',
+            subjectType: 'record_grant',
+            subjectId: grantId,
+            before: grant,
+            after: updated,
+          },
+          tx,
+        );
       });
       await this.bustGrantee(grant.granteeType, grant.granteeId);
     }

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { PermissionsService } from './permissions.service';
+import { AuditService } from './audit.service';
 
 /**
  * PersonaAssignmentService (PR4) — turns a user's chosen role/providerType into
@@ -24,6 +25,7 @@ export class PersonaAssignmentService {
   constructor(
     private prisma: PrismaService,
     private permissions: PermissionsService,
+    private audit: AuditService,
   ) {}
 
   /** Map a (role, providerType) pair to the seed persona slug. */
@@ -75,8 +77,22 @@ export class PersonaAssignmentService {
     });
 
     if (!existing) {
-      await this.prisma.userPersona.create({
-        data: { userId, personaId: persona.id, status },
+      // New assignment + audit event commit atomically (FR-19).
+      await this.prisma.$transaction(async (tx) => {
+        const row = await tx.userPersona.create({
+          data: { userId, personaId: persona.id, status },
+        });
+        await this.audit.record(
+          {
+            actorId: userId, // self-service assignment at onboarding
+            action: 'user_persona.assigned',
+            subjectType: 'user_persona',
+            subjectId: userId,
+            before: null,
+            after: row,
+          },
+          tx,
+        );
       });
     }
 
@@ -84,11 +100,30 @@ export class PersonaAssignmentService {
     return { personaSlug: persona.slug, status: existing?.status ?? status };
   }
 
-  /** Admin approves a PENDING assignment → ACTIVE (FR-5). Busts cache. */
-  async approve(userId: string, personaId: string): Promise<void> {
-    await this.prisma.userPersona.update({
-      where: { userId_personaId: { userId, personaId } },
-      data: { status: 'ACTIVE' },
+  /**
+   * Admin approves a PENDING assignment → ACTIVE (FR-5). Status flip + audit
+   * event commit atomically. Busts cache.
+   */
+  async approve(userId: string, personaId: string, actorId?: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const before = await tx.userPersona.findUnique({
+        where: { userId_personaId: { userId, personaId } },
+      });
+      const after = await tx.userPersona.update({
+        where: { userId_personaId: { userId, personaId } },
+        data: { status: 'ACTIVE' },
+      });
+      await this.audit.record(
+        {
+          actorId: actorId ?? null,
+          action: 'user_persona.approved',
+          subjectType: 'user_persona',
+          subjectId: userId,
+          before,
+          after,
+        },
+        tx,
+      );
     });
     this.permissions.bust(userId);
   }

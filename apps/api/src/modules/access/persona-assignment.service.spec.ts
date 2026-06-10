@@ -12,7 +12,7 @@ import { PersonaAssignmentService } from './persona-assignment.service';
  */
 
 function mockPrisma(overrides: any = {}) {
-  return {
+  const base: any = {
     persona: { findUnique: jest.fn().mockResolvedValue(null) },
     userPersona: {
       findUnique: jest.fn().mockResolvedValue(null),
@@ -20,11 +20,18 @@ function mockPrisma(overrides: any = {}) {
       update: jest.fn().mockResolvedValue({}),
     },
     ...overrides,
-  } as any;
+  };
+  // $transaction(cb) runs the callback with the same client (the mock itself).
+  base.$transaction = jest.fn((cb: any) => cb(base));
+  return base as any;
 }
 
 function mockPermissions() {
   return { bust: jest.fn() } as any;
+}
+
+function mockAudit() {
+  return { record: jest.fn().mockResolvedValue({}) } as any;
 }
 
 describe('PersonaAssignmentService.slugFor', () => {
@@ -74,11 +81,16 @@ describe('PersonaAssignmentService.assignFromRole', () => {
       },
     });
     const perms = mockPermissions();
-    const svc = new PersonaAssignmentService(prisma, perms);
+    const audit = mockAudit();
+    const svc = new PersonaAssignmentService(prisma, perms, audit);
 
     const res = await svc.assignFromRole('u1', 'OWNER', null);
 
     expect(res).toEqual({ personaSlug: 'client', status: 'ACTIVE' });
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'user_persona.assigned' }),
+      prisma,
+    );
     expect(prisma.userPersona.create).toHaveBeenCalledWith({
       data: { userId: 'u1', personaId: 'p-client', status: 'ACTIVE' },
     });
@@ -97,7 +109,7 @@ describe('PersonaAssignmentService.assignFromRole', () => {
       },
     });
     const perms = mockPermissions();
-    const svc = new PersonaAssignmentService(prisma, perms);
+    const svc = new PersonaAssignmentService(prisma, perms, mockAudit());
 
     const res = await svc.assignFromRole('u2', 'PROVIDER', 'PROFESSIONAL');
 
@@ -113,7 +125,7 @@ describe('PersonaAssignmentService.assignFromRole', () => {
   it('returns null and no-ops when role/providerType maps to no persona', async () => {
     const prisma = mockPrisma();
     const perms = mockPermissions();
-    const svc = new PersonaAssignmentService(prisma, perms);
+    const svc = new PersonaAssignmentService(prisma, perms, mockAudit());
 
     const res = await svc.assignFromRole('u3', 'PROVIDER', null);
 
@@ -134,7 +146,7 @@ describe('PersonaAssignmentService.assignFromRole', () => {
         }),
       },
     });
-    const svc = new PersonaAssignmentService(prisma, mockPermissions());
+    const svc = new PersonaAssignmentService(prisma, mockPermissions(), mockAudit());
     const res = await svc.assignFromRole('u4', 'PROVIDER', 'SUPPLIER');
     expect(res).toBeNull();
     expect(prisma.userPersona.create).not.toHaveBeenCalled();
@@ -158,7 +170,7 @@ describe('PersonaAssignmentService.assignFromRole', () => {
       },
     });
     const perms = mockPermissions();
-    const svc = new PersonaAssignmentService(prisma, perms);
+    const svc = new PersonaAssignmentService(prisma, perms, mockAudit());
 
     const res = await svc.assignFromRole('u5', 'PROVIDER', 'PROFESSIONAL');
 
@@ -175,9 +187,10 @@ describe('PersonaAssignmentService.approve', () => {
   it('flips an assignment to ACTIVE and busts the cache', async () => {
     const prisma = mockPrisma();
     const perms = mockPermissions();
-    const svc = new PersonaAssignmentService(prisma, perms);
+    const audit = mockAudit();
+    const svc = new PersonaAssignmentService(prisma, perms, audit);
 
-    await svc.approve('u6', 'p-prof');
+    await svc.approve('u6', 'p-prof', 'admin1');
 
     expect(prisma.userPersona.update).toHaveBeenCalledWith({
       where: { userId_personaId: { userId: 'u6', personaId: 'p-prof' } },

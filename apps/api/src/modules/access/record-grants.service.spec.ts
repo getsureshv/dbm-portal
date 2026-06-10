@@ -13,7 +13,7 @@ import { RecordGrantsService } from './record-grants.service';
  */
 
 function mockPrisma(overrides: any = {}) {
-  return {
+  const base: any = {
     user: { findUnique: jest.fn().mockResolvedValue(null) },
     persona: { findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
     userPersona: {
@@ -24,11 +24,18 @@ function mockPrisma(overrides: any = {}) {
       create: jest.fn().mockResolvedValue({ id: 'g1' }),
       findUnique: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
-      update: jest.fn().mockResolvedValue({}),
+      update: jest.fn().mockResolvedValue({ id: 'g1', status: 'REVOKED' }),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     ...overrides,
-  } as any;
+  };
+  // $transaction(cb) runs the callback with the same client (the mock itself).
+  base.$transaction = jest.fn((cb: any) => cb(base));
+  return base as any;
+}
+
+function mockAudit() {
+  return { record: jest.fn().mockResolvedValue({}) } as any;
 }
 
 function mockPermissions(overrides: any = {}) {
@@ -46,7 +53,8 @@ describe('RecordGrantsService.create', () => {
       user: { findUnique: jest.fn().mockResolvedValue({ id: 'u1' }) },
     });
     const perms = mockPermissions();
-    const svc = new RecordGrantsService(prisma, perms);
+    const audit = mockAudit();
+    const svc = new RecordGrantsService(prisma, perms, audit);
 
     const res = await svc.create({
       entity: 'project',
@@ -60,6 +68,10 @@ describe('RecordGrantsService.create', () => {
     });
 
     expect(res).toEqual({ id: 'g1' });
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'record_grant.created' }),
+      prisma,
+    );
     expect(prisma.recordGrant.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         entity: 'project',
@@ -77,7 +89,7 @@ describe('RecordGrantsService.create', () => {
   });
 
   it('rejects a grant to a non-existent user', async () => {
-    const svc = new RecordGrantsService(mockPrisma(), mockPermissions());
+    const svc = new RecordGrantsService(mockPrisma(), mockPermissions(), mockAudit());
     await expect(
       svc.create({
         entity: 'project',
@@ -100,7 +112,7 @@ describe('RecordGrantsService.create', () => {
       },
     });
     const perms = mockPermissions();
-    const svc = new RecordGrantsService(prisma, perms);
+    const svc = new RecordGrantsService(prisma, perms, mockAudit());
 
     await svc.create({
       entity: 'project',
@@ -131,10 +143,15 @@ describe('RecordGrantsService.revoke', () => {
       },
     });
     const perms = mockPermissions();
-    const svc = new RecordGrantsService(prisma, perms);
+    const audit = mockAudit();
+    const svc = new RecordGrantsService(prisma, perms, audit);
 
-    const res = await svc.revoke('g1');
+    const res = await svc.revoke('g1', 'admin1');
 
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'record_grant.revoked' }),
+      prisma,
+    );
     expect(prisma.recordGrant.update).toHaveBeenCalledWith({
       where: { id: 'g1' },
       data: { status: 'REVOKED' },
@@ -156,7 +173,7 @@ describe('RecordGrantsService.revoke', () => {
       },
     });
     const perms = mockPermissions();
-    const svc = new RecordGrantsService(prisma, perms);
+    const svc = new RecordGrantsService(prisma, perms, mockAudit());
 
     await svc.revoke('g1');
     expect(prisma.recordGrant.update).not.toHaveBeenCalled();
@@ -164,7 +181,7 @@ describe('RecordGrantsService.revoke', () => {
   });
 
   it('throws NotFound for an unknown grant', async () => {
-    const svc = new RecordGrantsService(mockPrisma(), mockPermissions());
+    const svc = new RecordGrantsService(mockPrisma(), mockPermissions(), mockAudit());
     await expect(svc.revoke('nope')).rejects.toBeInstanceOf(NotFoundException);
   });
 });
@@ -176,7 +193,7 @@ describe('RecordGrantsService.expireOverdue', () => {
       userPersona: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     });
     const perms = mockPermissions();
-    const svc = new RecordGrantsService(prisma, perms);
+    const svc = new RecordGrantsService(prisma, perms, mockAudit());
 
     const res = await svc.expireOverdue(new Date('2026-06-10T00:00:00Z'));
 
@@ -223,7 +240,7 @@ describe('RecordGrantsService.whoCanAccess', () => {
         .fn()
         .mockResolvedValue({ id: 'p1', ownerId: 'owner1', participantIds: [] }),
     });
-    const svc = new RecordGrantsService(prisma, perms);
+    const svc = new RecordGrantsService(prisma, perms, mockAudit());
 
     const report = await svc.whoCanAccess('project', 'p1');
 

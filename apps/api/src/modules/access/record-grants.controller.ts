@@ -57,8 +57,12 @@ export class RecordGrantsController {
   @Post(':id/revoke')
   @RequirePermission('revoke', 'user_access')
   @ApiOperation({ summary: 'Revoke a record grant' })
-  async revoke(@Param('id') id: string, @Body() _dto: RevokeRecordGrantDto) {
-    return this.grants.revoke(id);
+  async revoke(
+    @Param('id') id: string,
+    @Body() _dto: RevokeRecordGrantDto,
+    @Req() req: any,
+  ) {
+    return this.grants.revoke(id, req.userId);
   }
 
   @Post('expire-overdue')

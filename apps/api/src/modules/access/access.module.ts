@@ -1,7 +1,10 @@
 import { Global, Module } from '@nestjs/common';
 import { PrismaModule } from '../../common/prisma.module';
+import { AuthModule } from '../auth/auth.module';
 import { PermissionsService } from './permissions.service';
 import { PermissionGuard } from './permission.guard';
+import { PersonaAssignmentService } from './persona-assignment.service';
+import { MeController } from './me.controller';
 
 /**
  * Access module (PR3). Global so any controller can inject PermissionsService
@@ -12,8 +15,9 @@ import { PermissionGuard } from './permission.guard';
  */
 @Global()
 @Module({
-  imports: [PrismaModule],
-  providers: [PermissionsService, PermissionGuard],
-  exports: [PermissionsService, PermissionGuard],
+  imports: [PrismaModule, AuthModule],
+  controllers: [MeController],
+  providers: [PermissionsService, PermissionGuard, PersonaAssignmentService],
+  exports: [PermissionsService, PermissionGuard, PersonaAssignmentService],
 })
 export class AccessModule {}

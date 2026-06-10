@@ -4,7 +4,9 @@ import { AuthModule } from '../auth/auth.module';
 import { PermissionsService } from './permissions.service';
 import { PermissionGuard } from './permission.guard';
 import { PersonaAssignmentService } from './persona-assignment.service';
+import { RecordGrantsService } from './record-grants.service';
 import { MeController } from './me.controller';
+import { RecordGrantsController } from './record-grants.controller';
 
 /**
  * Access module (PR3). Global so any controller can inject PermissionsService
@@ -16,8 +18,18 @@ import { MeController } from './me.controller';
 @Global()
 @Module({
   imports: [PrismaModule, AuthModule],
-  controllers: [MeController],
-  providers: [PermissionsService, PermissionGuard, PersonaAssignmentService],
-  exports: [PermissionsService, PermissionGuard, PersonaAssignmentService],
+  controllers: [MeController, RecordGrantsController],
+  providers: [
+    PermissionsService,
+    PermissionGuard,
+    PersonaAssignmentService,
+    RecordGrantsService,
+  ],
+  exports: [
+    PermissionsService,
+    PermissionGuard,
+    PersonaAssignmentService,
+    RecordGrantsService,
+  ],
 })
 export class AccessModule {}

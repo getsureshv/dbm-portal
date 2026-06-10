@@ -16,7 +16,8 @@ import {
   Menu,
   X,
   Shield,
-  Users,
+  UsersRound,
+  UserCog,
   KeyRound,
   ClipboardCheck,
   ScrollText,
@@ -103,7 +104,8 @@ export default function AuthLayout({
     if (user?.role !== 'ADMIN') return [];
     return [
       { href: '/admin/personas', label: 'Personas', icon: Shield },
-      { href: '/admin/users', label: 'User Access', icon: Users },
+      { href: '/admin/users-list', label: 'Users', icon: UsersRound },
+      { href: '/admin/users', label: 'User Access', icon: UserCog },
       { href: '/admin/record-access', label: 'Record Access', icon: KeyRound },
       { href: '/admin/approvals', label: 'Approvals', icon: ClipboardCheck },
       { href: '/admin/audit', label: 'Audit Log', icon: ScrollText },
@@ -115,7 +117,8 @@ export default function AuthLayout({
     ];
   }, [user?.role, firebaseReady]);
 
-  const isActive = (href: string) => pathname.startsWith(href);
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(`${href}/`);
 
   // Public access for /discovery and the city-integration demo:
   // render minimal public chrome instead of redirecting. We do NOT gate these

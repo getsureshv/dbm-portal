@@ -405,6 +405,87 @@ export class AdminPersonasService {
     };
   }
 
+  /**
+   * Full user roster for the Admin UI (Administration → Users).
+   * Returns every user with their role, provider type, active/pending persona
+   * counts, and the list of personas they currently hold. Supports an optional
+   * case-insensitive search across email/name and an optional role filter.
+   */
+  async listUsers(opts?: { search?: string; role?: string }) {
+    const search = opts?.search?.trim();
+    const role = opts?.role?.trim();
+
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { email: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    if (role && role !== 'ALL') {
+      where.role = role as any;
+    }
+
+    const users = await this.prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        providerType: true,
+        createdAt: true,
+        UserPersona: {
+          select: {
+            status: true,
+            persona: { select: { id: true, slug: true, name: true, baseType: true } },
+          },
+          orderBy: { assignedAt: 'asc' },
+        },
+      },
+      orderBy: [{ createdAt: 'asc' }],
+    });
+
+    return users.map((u) => {
+      const personas = u.UserPersona.map((p) => ({
+        personaId: p.persona.id,
+        slug: p.persona.slug,
+        name: p.persona.name,
+        baseType: p.persona.baseType,
+        status: p.status,
+      }));
+      return {
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        role: u.role,
+        providerType: u.providerType,
+        createdAt: u.createdAt,
+        personaCount: personas.filter((p) => p.status === 'ACTIVE').length,
+        pendingCount: personas.filter((p) => p.status === 'PENDING').length,
+        personas,
+      };
+    });
+  }
+
+  /**
+   * Resolve a user by email (case-insensitive) OR by UUID, so the User Access
+   * lookup can accept either. Returns the same shape as {@link userPersonas}.
+   */
+  async userPersonasByEmailOrId(identifier: string) {
+    const id = identifier.trim();
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    const user = await this.prisma.user.findFirst({
+      where: isUuid
+        ? { id }
+        : { email: { equals: id, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    return this.userPersonas(user.id);
+  }
+
   /** Pending provider signups awaiting vetting (Admin UI approvals queue, §6.5). */
   async pendingApprovals() {
     const rows = await this.prisma.userPersona.findMany({

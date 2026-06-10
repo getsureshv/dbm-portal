@@ -529,6 +529,24 @@ export interface ApiUserPersonas {
   personas: ApiUserPersona[];
 }
 
+export interface ApiUserListItem {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string | null;
+  providerType: string | null;
+  createdAt: string;
+  personaCount: number;
+  pendingCount: number;
+  personas: {
+    personaId: string;
+    slug: string;
+    name: string;
+    baseType: string;
+    status: 'PENDING' | 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+  }[];
+}
+
 export interface ApiPendingApproval {
   userId: string;
   user: { id: string; email: string; name: string | null };
@@ -637,8 +655,15 @@ export const admin = {
   pendingApprovals: () => request<ApiPendingApproval[]>('/admin/approvals'),
 
   // User access
+  listUsers: (params?: { search?: string; role?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.search) qs.set('search', params.search);
+    if (params?.role && params.role !== 'ALL') qs.set('role', params.role);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request<ApiUserListItem[]>(`/admin/users${suffix}`);
+  },
   userPersonas: (userId: string) =>
-    request<ApiUserPersonas>(`/admin/users/${userId}/personas`),
+    request<ApiUserPersonas>(`/admin/users/${encodeURIComponent(userId)}/personas`),
   assignPersona: (userId: string, personaId: string, expiresAt?: string) =>
     request<unknown>(`/admin/users/${userId}/personas`, {
       method: 'POST',

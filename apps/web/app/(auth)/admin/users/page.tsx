@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Users,
   Loader2,
@@ -135,22 +136,38 @@ function UsersInner() {
   const [error, setError] = useState<string | null>(null);
   const [showAssign, setShowAssign] = useState(false);
 
-  const lookup = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    const userId = userIdInput.trim();
-    if (!userId) return;
+  const searchParams = useSearchParams();
+
+  const runLookup = useCallback(async (identifier: string) => {
+    const id = identifier.trim();
+    if (!id) return;
     setLoading(true);
     setError(null);
     setData(null);
     try {
-      const res = await admin.userPersonas(userId);
+      const res = await admin.userPersonas(id);
       setData(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'User not found');
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const lookup = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    await runLookup(userIdInput);
   };
+
+  // Deep-link support: /admin/users?lookup=<email-or-id> (used by the Users roster).
+  useEffect(() => {
+    const q = searchParams.get('lookup');
+    if (q) {
+      setUserIdInput(q);
+      runLookup(q);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const refresh = () => {
     if (data) admin.userPersonas(data.user.id).then(setData).catch(() => {});
@@ -186,7 +203,7 @@ function UsersInner() {
         <div>
           <h1 className="text-xl font-bold text-gray-900">User access</h1>
           <p className="text-sm text-gray-500">
-            Look up a user and manage their persona assignments
+            Look up a user by email or ID and manage their persona assignments
           </p>
         </div>
       </div>
@@ -197,8 +214,8 @@ function UsersInner() {
           <input
             value={userIdInput}
             onChange={(e) => setUserIdInput(e.target.value)}
-            placeholder="User ID"
-            className="w-full rounded-lg border border-gray-300 pl-9 pr-3 py-2 text-sm font-mono focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+            placeholder="Email or User ID"
+            className="w-full rounded-lg border border-gray-300 pl-9 pr-3 py-2 text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
           />
         </div>
         <button
@@ -304,7 +321,15 @@ function UsersInner() {
 export default function UsersPage() {
   return (
     <AdminGuard>
-      <UsersInner />
+      <Suspense
+        fallback={
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 flex justify-center">
+            <Loader2 className="animate-spin text-amber-500" size={24} />
+          </div>
+        }
+      >
+        <UsersInner />
+      </Suspense>
     </AdminGuard>
   );
 }

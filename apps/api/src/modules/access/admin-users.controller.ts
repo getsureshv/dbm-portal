@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -19,6 +20,7 @@ import { AssignPersonaDto } from './dto/persona.dto';
 /**
  * Admin user-access management (spec §5 Admin, FR-3/FR-5/US-09).
  *
+ *   GET    /admin/users                                   — full user roster (search/filter)
  *   GET    /admin/users/:userId/personas                  — a user's assignments
  *   POST   /admin/users/:userId/personas                  — assign a persona
  *   DELETE /admin/users/:userId/personas/:personaId       — revoke an assignment
@@ -40,11 +42,21 @@ export class AdminUsersController {
     private assignment: PersonaAssignmentService,
   ) {}
 
+  @Get()
+  @RequirePermission('read', 'user_access')
+  @ApiOperation({ summary: 'Full user roster with personas held (Admin UI → Users)' })
+  async listUsers(
+    @Query('search') search?: string,
+    @Query('role') role?: string,
+  ) {
+    return this.personas.listUsers({ search, role });
+  }
+
   @Get(':userId/personas')
   @RequirePermission('read', 'user_access')
-  @ApiOperation({ summary: "A user's persona assignments" })
+  @ApiOperation({ summary: "A user's persona assignments (accepts email or UUID)" })
   async userPersonas(@Param('userId') userId: string) {
-    return this.personas.userPersonas(userId);
+    return this.personas.userPersonasByEmailOrId(userId);
   }
 
   @Post(':userId/personas')

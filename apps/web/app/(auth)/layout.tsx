@@ -15,6 +15,11 @@ import {
   Scale,
   Menu,
   X,
+  Shield,
+  Users,
+  KeyRound,
+  ClipboardCheck,
+  ScrollText,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -62,6 +67,16 @@ export default function AuthLayout({
   const navItems = useMemo(() => {
     const role = user?.role;
 
+    if (role === 'ADMIN') {
+      return [
+        { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { href: '/projects', label: 'Projects', icon: Briefcase },
+        { href: '/permits', label: 'Permits & Codes', icon: Scale },
+        { href: '/chat', label: 'Chat', icon: MessageSquare },
+        { href: '/profile', label: 'Profile', icon: Building2 },
+      ];
+    }
+
     if (role === 'PROVIDER') {
       return [
         { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -79,6 +94,18 @@ export default function AuthLayout({
       { href: '/discovery', label: 'Discovery', icon: Compass },
       { href: '/chat', label: 'Chat', icon: MessageSquare },
       { href: '/profile', label: 'Profile', icon: Building2 },
+    ];
+  }, [user?.role]);
+
+  // Admin-only access-management section (PR8). Rendered as a separate nav group.
+  const adminNavItems = useMemo(() => {
+    if (user?.role !== 'ADMIN') return [];
+    return [
+      { href: '/admin/personas', label: 'Personas', icon: Shield },
+      { href: '/admin/users', label: 'User Access', icon: Users },
+      { href: '/admin/record-access', label: 'Record Access', icon: KeyRound },
+      { href: '/admin/approvals', label: 'Approvals', icon: ClipboardCheck },
+      { href: '/admin/audit', label: 'Audit Log', icon: ScrollText },
     ];
   }, [user?.role]);
 
@@ -153,7 +180,8 @@ export default function AuthLayout({
 
   const displayName = user.name || user.email;
 
-  const roleBadgeLabel = user.role === 'PROVIDER' ? 'Provider' : 'Owner';
+  const roleBadgeLabel =
+    user.role === 'PROVIDER' ? 'Provider' : user.role === 'ADMIN' ? 'Admin' : 'Owner';
 
   return (
     <div className="flex h-screen bg-slate-50">
@@ -199,7 +227,7 @@ export default function AuthLayout({
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-1">
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
@@ -218,6 +246,32 @@ export default function AuthLayout({
               </Link>
             );
           })}
+
+          {adminNavItems.length > 0 && (
+            <div className="pt-4 mt-2 border-t border-gray-100">
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                Administration
+              </p>
+              {adminNavItems.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                      active
+                        ? 'bg-amber-50 text-amber-700 border-l-[3px] border-l-amber-500 pl-[9px]'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon size={20} className={active ? 'text-amber-600' : 'text-gray-400'} />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </nav>
 
         {/* User section at bottom */}

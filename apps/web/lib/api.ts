@@ -445,3 +445,231 @@ export const jurisdictions = {
   },
 };
 
+
+// ─── Admin: Personas & Access (PR7/PR8) ──────────────────
+
+export type PermissionScope = 'ALL' | 'OWN' | 'ASSIGNED';
+
+export interface ApiPermissionRow {
+  entity: string;
+  actions: string[];
+  scope: PermissionScope;
+}
+
+export interface ApiPersona {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  baseType: string;
+  isSystem: boolean;
+  status: 'ACTIVE' | 'ARCHIVED';
+  requiresApproval: boolean;
+  holderCount: number;
+  permissions: ApiPermissionRow[];
+}
+
+export interface ApiEntity {
+  key: string;
+  label: string;
+  actions: string[];
+  supportsRecordGrants: boolean;
+  ownerField: string | null;
+  participantSource: string | null;
+}
+
+export interface ApiUserPersona {
+  personaId: string;
+  slug: string;
+  name: string;
+  baseType: string;
+  status: 'PENDING' | 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+  assignedAt: string;
+  expiresAt: string | null;
+}
+
+export interface ApiUserPersonas {
+  user: {
+    id: string;
+    email: string;
+    name: string | null;
+    role: string | null;
+    providerType: string | null;
+  };
+  personas: ApiUserPersona[];
+}
+
+export interface ApiPendingApproval {
+  userId: string;
+  user: { id: string; email: string; name: string | null };
+  personaId: string;
+  personaSlug: string;
+  personaName: string;
+  assignedAt: string;
+}
+
+export interface ApiEffectivePermissions {
+  userId: string;
+  personas: { slug: string; permissions: ApiPermissionRow[] }[];
+  grants: unknown[];
+}
+
+export interface ApiAccessPrincipal {
+  principalType: 'USER' | 'PERSONA';
+  principalId: string;
+  label: string;
+  source: 'OWNER' | 'PARTICIPANT' | 'PERSONA_SCOPE' | 'GRANT';
+  actions?: string[];
+  detail?: Record<string, unknown>;
+}
+
+export interface ApiRecordGrant {
+  id: string;
+  entity: string;
+  recordId: string;
+  granteeType: 'USER' | 'PERSONA';
+  granteeId: string;
+  actions: string[];
+  reason: string | null;
+  status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+  expiresAt: string | null;
+  grantedBy: string | null;
+  createdAt: string;
+}
+
+export interface ApiAuditEntry {
+  id: string;
+  actorId: string | null;
+  action: string;
+  subjectType: string;
+  subjectId: string | null;
+  before: unknown;
+  after: unknown;
+  at: string;
+}
+
+export interface ApiAuditPage {
+  items: ApiAuditEntry[];
+  nextCursor: string | null;
+}
+
+export const admin = {
+  // Personas
+  listPersonas: () => request<ApiPersona[]>('/admin/personas'),
+  getPersona: (id: string) => request<ApiPersona>(`/admin/personas/${id}`),
+  createPersona: (data: {
+    name: string;
+    slug: string;
+    description?: string;
+    baseType: string;
+    requiresApproval?: boolean;
+  }) =>
+    request<ApiPersona>('/admin/personas', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updatePersona: (
+    id: string,
+    data: Partial<{ name: string; description: string; requiresApproval: boolean }>,
+  ) =>
+    request<ApiPersona>(`/admin/personas/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  clonePersona: (id: string, data: { name: string; slug: string }) =>
+    request<ApiPersona>(`/admin/personas/${id}/clone`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  archivePersona: (id: string, force = false) =>
+    request<ApiPersona>(`/admin/personas/${id}/archive`, {
+      method: 'POST',
+      body: JSON.stringify({ force }),
+    }),
+  replacePermissions: (id: string, permissions: ApiPermissionRow[]) =>
+    request<{ personaId: string; permissions: ApiPermissionRow[] }>(
+      `/admin/personas/${id}/permissions`,
+      { method: 'PUT', body: JSON.stringify({ permissions }) },
+    ),
+
+  // Entity registry
+  listEntities: () => request<ApiEntity[]>('/admin/entities'),
+  updateEntity: (
+    key: string,
+    data: Partial<{ label: string; actions: string[]; supportsRecordGrants: boolean }>,
+  ) =>
+    request<ApiEntity>(`/admin/entities/${key}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  // Approvals
+  pendingApprovals: () => request<ApiPendingApproval[]>('/admin/approvals'),
+
+  // User access
+  userPersonas: (userId: string) =>
+    request<ApiUserPersonas>(`/admin/users/${userId}/personas`),
+  assignPersona: (userId: string, personaId: string, expiresAt?: string) =>
+    request<unknown>(`/admin/users/${userId}/personas`, {
+      method: 'POST',
+      body: JSON.stringify({ personaId, expiresAt }),
+    }),
+  revokePersona: (userId: string, personaId: string) =>
+    request<unknown>(`/admin/users/${userId}/personas/${personaId}`, {
+      method: 'DELETE',
+    }),
+  approvePersona: (userId: string, personaId: string) =>
+    request<unknown>(`/admin/users/${userId}/personas/${personaId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+  effectivePermissions: (userId: string) =>
+    request<ApiEffectivePermissions>(
+      `/admin/users/${userId}/effective-permissions`,
+    ),
+
+  // Record access
+  whoCanAccess: (entity: string, recordId: string) => {
+    const qs = new URLSearchParams({ entity, recordId }).toString();
+    return request<ApiAccessPrincipal[]>(`/admin/record-grants?${qs}`);
+  },
+  listRecordGrants: (entity: string, recordId: string) => {
+    const qs = new URLSearchParams({ entity, recordId, view: 'grants' }).toString();
+    return request<ApiRecordGrant[]>(`/admin/record-grants?${qs}`);
+  },
+  createRecordGrant: (data: {
+    entity: string;
+    recordId: string;
+    granteeType: 'USER' | 'PERSONA';
+    granteeId: string;
+    actions: string[];
+    reason?: string;
+    expiresAt?: string;
+  }) =>
+    request<ApiRecordGrant>('/admin/record-grants', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  revokeRecordGrant: (id: string) =>
+    request<ApiRecordGrant>(`/admin/record-grants/${id}/revoke`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  // Audit
+  audit: (params: {
+    action?: string;
+    actorId?: string;
+    subjectType?: string;
+    subjectId?: string;
+    cursor?: string;
+    limit?: number;
+  } = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== '') qs.set(k, String(v));
+    });
+    const suffix = qs.toString() ? `?${qs}` : '';
+    return request<ApiAuditPage>(`/admin/audit${suffix}`);
+  },
+};

@@ -7,7 +7,6 @@ import {
   Loader2,
   CheckCircle2,
   Sparkles,
-  ShieldCheck,
   ArrowRight,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -29,7 +28,6 @@ export default function LoginPage() {
     loading,
     error: authError,
     user,
-    firebaseReady,
   } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -86,18 +84,6 @@ export default function LoginPage() {
       setResetSent(true);
     } catch (err: any) {
       setError(err.message || 'Failed to send reset email');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleDevLogin = async (testEmail: string, uid: string) => {
-    setSubmitting(true);
-    setError(null);
-    try {
-      await devLogin(testEmail, uid);
-    } catch (err: any) {
-      setError(err.message || 'Login failed');
     } finally {
       setSubmitting(false);
     }
@@ -403,51 +389,6 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-
-          {!firebaseReady && (
-            <div className="mt-4 p-3 bg-amber-50 border border-amber-100 rounded-xl flex items-start gap-2 text-amber-800 text-xs">
-              <ShieldCheck size={14} className="shrink-0 mt-0.5" />
-              <span>
-                Firebase is not configured. Use{' '}
-                <span className="font-semibold">Dev Quick Login</span> below to
-                continue in development mode.
-              </span>
-            </div>
-          )}
-
-          {/* Dev Quick Login */}
-          <div className="mt-6 pt-6 border-t border-dashed border-gray-200">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[11px] text-gray-500 uppercase tracking-widest font-semibold">
-                Dev Quick Login
-              </span>
-              <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded font-semibold">
-                LOCAL
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-2.5">
-              <button
-                onClick={() => handleDevLogin('owner@test.com', 'test-owner-uid')}
-                disabled={submitting}
-                className="px-3 py-2.5 text-xs bg-white border border-gray-200 hover:border-gold hover:bg-gold/5 text-gray-700 hover:text-navy rounded-lg transition disabled:opacity-50 font-semibold"
-              >
-                <span className="block text-navy">Owner</span>
-                <span className="block text-gray-400 text-[10px] mt-0.5 normal-case tracking-normal">
-                  owner@test.com
-                </span>
-              </button>
-              <button
-                onClick={() => handleDevLogin('pro@test.com', 'test-pro-uid')}
-                disabled={submitting}
-                className="px-3 py-2.5 text-xs bg-white border border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-gray-700 hover:text-navy rounded-lg transition disabled:opacity-50 font-semibold"
-              >
-                <span className="block text-navy">Provider</span>
-                <span className="block text-gray-400 text-[10px] mt-0.5 normal-case tracking-normal">
-                  pro@test.com
-                </span>
-              </button>
-            </div>
-          </div>
 
           {/* Sign-up CTA */}
           <p className="text-sm text-gray-500 text-center mt-7">

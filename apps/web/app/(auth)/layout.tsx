@@ -20,6 +20,7 @@ import {
   KeyRound,
   ClipboardCheck,
   ScrollText,
+  Wand2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -32,7 +33,7 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, firebaseReady } = useAuth();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -106,8 +107,13 @@ export default function AuthLayout({
       { href: '/admin/record-access', label: 'Record Access', icon: KeyRound },
       { href: '/admin/approvals', label: 'Approvals', icon: ClipboardCheck },
       { href: '/admin/audit', label: 'Audit Log', icon: ScrollText },
+      // Dev Login tool — only shown when Firebase is NOT configured (i.e. local/dev,
+      // never on the production portal that external users test against).
+      ...(!firebaseReady
+        ? [{ href: '/admin/dev-login', label: 'Dev Login', icon: Wand2 }]
+        : []),
     ];
-  }, [user?.role]);
+  }, [user?.role, firebaseReady]);
 
   const isActive = (href: string) => pathname.startsWith(href);
 

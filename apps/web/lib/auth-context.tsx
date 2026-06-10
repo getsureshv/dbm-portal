@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { auth as authApi } from './api';
+import { auth as authApi, setSessionToken } from './api';
 import { handleRedirectResult, firebaseSignOut, isFirebaseConfigured } from './firebase';
 
 export interface User {
@@ -70,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const idToken = await handleRedirectResult();
           if (idToken) {
             const data = await authApi.createSession(idToken);
+            setSessionToken(data.token);
             setUser(data.user);
             if (!data.user.onboardingComplete) {
               router.push('/onboarding');
@@ -109,6 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setError(null);
       const data = await authApi.createSession(firebaseIdToken);
+      setSessionToken(data.token);
       setUser(data.user);
       // Route based on onboarding status
       if (!data.user.onboardingComplete) {
@@ -140,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore — cookie might already be cleared
     }
+    setSessionToken(null);
     setUser(null);
     router.replace('/login');
   }, [router]);

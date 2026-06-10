@@ -6,11 +6,41 @@
 
 const BASE = '/api';
 
+// ─── Session token (Bearer) support ────────────────────────
+// In addition to the httpOnly `session` cookie, we keep the session token in
+// localStorage and send it as `Authorization: Bearer`. This is required for the
+// public sandbox preview on *.pplx.app, where non-`__Host-` cookies are stripped
+// by the proxy and the cookie-based session would otherwise be lost. Locally the
+// cookie still works; the Bearer header is simply an additional, equivalent
+// credential the backend already accepts (see auth.guard.ts).
+const TOKEN_KEY = 'dbm_session_token';
+
+export function setSessionToken(token: string | null) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (token) window.localStorage.setItem(TOKEN_KEY, token);
+    else window.localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // localStorage may be unavailable (private mode); cookie still covers local dev.
+  }
+}
+
+export function getSessionToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = getSessionToken();
   const res = await fetch(`${BASE}${path}`, {
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
     ...options,

@@ -552,8 +552,16 @@ export interface ApiRecordListItem {
   title: string;
   type: string;
   status: string;
+  zipCode: string | null;
   ownerEmail: string | null;
   ownerName: string | null;
+  createdAt: string;
+}
+
+export interface ApiRecordListPage {
+  items: ApiRecordListItem[];
+  nextCursor: string | null;
+  total: number;
 }
 
 export interface ApiPendingApproval {
@@ -693,10 +701,23 @@ export const admin = {
     ),
 
   // Record access
-  listRecords: (entity = 'project', search?: string) => {
+  listRecords: (
+    entity = 'project',
+    opts?: {
+      search?: string;
+      status?: string;
+      type?: string;
+      cursor?: string | null;
+      limit?: number;
+    },
+  ) => {
     const qs = new URLSearchParams({ entity });
-    if (search) qs.set('search', search);
-    return request<ApiRecordListItem[]>(`/admin/users/records?${qs.toString()}`);
+    if (opts?.search) qs.set('search', opts.search);
+    if (opts?.status && opts.status !== 'ALL') qs.set('status', opts.status);
+    if (opts?.type && opts.type !== 'ALL') qs.set('type', opts.type);
+    if (opts?.cursor) qs.set('cursor', opts.cursor);
+    if (opts?.limit) qs.set('limit', String(opts.limit));
+    return request<ApiRecordListPage>(`/admin/users/records?${qs.toString()}`);
   },
   whoCanAccess: (entity: string, recordId: string) => {
     const qs = new URLSearchParams({ entity, recordId }).toString();

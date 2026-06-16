@@ -312,6 +312,9 @@ model Project {
   @@index([ownerId])
   @@index([zipCode])
   @@index([status])
+  @@index([type])
+  // Keyset pagination order for the admin record picker (FR record-search).
+  @@index([createdAt, id])
   @@map("projects")
 }
 

@@ -21,8 +21,37 @@ import {
 } from '../../../../lib/api';
 import AdminGuard from '../AdminGuard';
 
-// Searchable project picker: type to filter by name/type, pick from the list.
-// Selecting a project sets its UUID behind the scenes — admins never see a raw ID.
+const PROJECT_STATUSES = [
+  'DISCOVERY',
+  'BIDDING',
+  'CONTRACTING',
+  'EXECUTION',
+  'CLOSING',
+  'ARCHIVED',
+];
+const PROJECT_TYPES = ['RESIDENTIAL', 'COMMERCIAL', 'NEW_BUILD'];
+const PICKER_PAGE_SIZE = 20;
+
+function shortId(id: string) {
+  return id.slice(0, 8);
+}
+
+function formatDate(iso: string) {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch {
+    return '';
+  }
+}
+
+// Searchable project picker: type to search by name, type, zip, owner email or
+// owner name; optionally filter by status/type; page through results with
+// "load more". Selecting a project sets its UUID behind the scenes — admins
+// never see a raw ID. Scales to thousands of projects via keyset pagination.
 function ProjectPicker({
   value,
   onSelect,
@@ -31,21 +60,38 @@ function ProjectPicker({
   onSelect: (record: { id: string; label: string } | null) => void;
 }) {
   const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [typeFilter, setTypeFilter] = useState('ALL');
   const [open, setOpen] = useState(false);
   const [records, setRecords] = useState<ApiRecordListItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
+  // Debounced fresh search whenever the query or filters change.
   useEffect(() => {
     let active = true;
     setLoading(true);
     const t = setTimeout(() => {
       admin
-        .listRecords('project', query.trim() || undefined)
-        .then((r) => {
-          if (active) setRecords(r);
+        .listRecords('project', {
+          search: query.trim() || undefined,
+          status: statusFilter,
+          type: typeFilter,
+          limit: PICKER_PAGE_SIZE,
+        })
+        .then((page) => {
+          if (!active) return;
+          setRecords(page.items);
+          setNextCursor(page.nextCursor);
+          setTotal(page.total);
         })
         .catch(() => {
-          if (active) setRecords([]);
+          if (!active) return;
+          setRecords([]);
+          setNextCursor(null);
+          setTotal(0);
         })
         .finally(() => {
           if (active) setLoading(false);
@@ -55,7 +101,27 @@ function ProjectPicker({
       active = false;
       clearTimeout(t);
     };
-  }, [query]);
+  }, [query, statusFilter, typeFilter]);
+
+  const loadMore = () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    admin
+      .listRecords('project', {
+        search: query.trim() || undefined,
+        status: statusFilter,
+        type: typeFilter,
+        cursor: nextCursor,
+        limit: PICKER_PAGE_SIZE,
+      })
+      .then((page) => {
+        setRecords((prev) => [...prev, ...page.items]);
+        setNextCursor(page.nextCursor);
+        setTotal(page.total);
+      })
+      .catch(() => undefined)
+      .finally(() => setLoadingMore(false));
+  };
 
   if (value) {
     return (
@@ -77,22 +143,60 @@ function ProjectPicker({
   }
 
   return (
-    <div className="relative flex-1 min-w-[200px]">
-      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-      <input
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
-        placeholder="Search projects by name or type"
-        className="w-full rounded-lg border border-gray-300 pl-9 pr-3 py-2 text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
-      />
+    <div className="relative flex-1 min-w-[260px]">
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+          />
+          <input
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setTimeout(() => setOpen(false), 200)}
+            placeholder="Search by name, type, zip, or owner email/name"
+            className="w-full rounded-lg border border-gray-300 pl-9 pr-3 py-2 text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          onFocus={() => setOpen(true)}
+          className="rounded-lg border border-gray-300 px-2 py-2 text-sm text-gray-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+        >
+          <option value="ALL">All statuses</option>
+          {PROJECT_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          onFocus={() => setOpen(true)}
+          className="rounded-lg border border-gray-300 px-2 py-2 text-sm text-gray-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+        >
+          <option value="ALL">All types</option>
+          {PROJECT_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </div>
       {open && (
-        <div className="absolute z-20 mt-1 w-full max-h-64 overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
-          {loading && (
+        <div className="absolute z-20 mt-1 w-full max-h-80 overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+          <div className="sticky top-0 bg-gray-50 px-3 py-1.5 text-[11px] font-medium text-gray-500 border-b border-gray-100">
+            {loading
+              ? 'Searching…'
+              : `${total.toLocaleString()} match${total === 1 ? '' : 'es'}`}
+          </div>
+          {loading && records.length === 0 && (
             <p className="px-3 py-2 text-xs text-gray-400 flex items-center gap-1.5">
               <Loader2 size={12} className="animate-spin" /> Loading…
             </p>
@@ -111,18 +215,40 @@ function ProjectPicker({
                   onSelect({ id: r.id, label });
                   setOpen(false);
                 }}
-                className="w-full text-left px-3 py-2 hover:bg-amber-50"
+                className="w-full text-left px-3 py-2 hover:bg-amber-50 border-b border-gray-50 last:border-0"
               >
                 <p className="text-sm text-gray-900">
                   {r.title}{' '}
-                  <span className="text-xs text-gray-500">— {r.type} ({r.status})</span>
+                  <span className="text-xs text-gray-500">
+                    — {r.type} ({r.status})
+                  </span>
                 </p>
-                {r.ownerEmail && (
-                  <p className="text-xs text-gray-400">owner: {r.ownerEmail}</p>
-                )}
+                <p className="text-xs text-gray-400 flex flex-wrap gap-x-2">
+                  {r.ownerEmail && <span>owner: {r.ownerEmail}</span>}
+                  {r.zipCode && <span>zip: {r.zipCode}</span>}
+                  <span>#{shortId(r.id)}</span>
+                  <span>{formatDate(r.createdAt)}</span>
+                </p>
               </button>
             );
           })}
+          {nextCursor && (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="w-full px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50 flex items-center justify-center gap-1.5 disabled:opacity-60"
+            >
+              {loadingMore ? (
+                <>
+                  <Loader2 size={12} className="animate-spin" /> Loading…
+                </>
+              ) : (
+                `Load more (${records.length} of ${total.toLocaleString()})`
+              )}
+            </button>
+          )}
         </div>
       )}
     </div>

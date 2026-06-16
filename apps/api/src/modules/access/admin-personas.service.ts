@@ -488,21 +488,71 @@ export class AdminPersonasService {
 
   /**
    * List selectable records for a given entity so the Record Access UI can offer
-   * a friendly name/type picker instead of asking admins to paste a raw UUID.
-   * Only `project` has real records today; other entities return an empty list
-   * (the UI falls back to manual ID entry for those). Supports a case-insensitive
-   * search across title/type.
+   * a friendly searchable picker instead of asking admins to paste a raw UUID.
+   * Only `project` has real records today; other entities return an empty page.
+   *
+   * Scales to thousands of rows:
+   *  - Free-text `search` matches across title, type, zip, owner email & owner
+   *    name (case-insensitive). Type is matched both by enum-prefix and by the
+   *    typed string so "resid" finds RESIDENTIAL.
+   *  - `status` / `type` filters narrow the set without text.
+   *  - Keyset (cursor) pagination on (createdAt, id) keeps every page fast and
+   *    stable regardless of table size. `limit` is clamped to [1, 50].
+   *  - Returns { items, nextCursor, total } so the UI can show "load more".
    */
-  async listRecords(entity: string, search?: string) {
-    if (entity !== 'project') return [];
-    const q = search?.trim();
+  async listRecords(
+    entity: string,
+    opts?: {
+      search?: string;
+      status?: string;
+      type?: string;
+      cursor?: string | null;
+      limit?: number;
+    },
+  ): Promise<{
+    items: Array<{
+      id: string;
+      title: string;
+      type: string;
+      status: string;
+      zipCode: string | null;
+      ownerEmail: string | null;
+      ownerName: string | null;
+      createdAt: Date;
+    }>;
+    nextCursor: string | null;
+    total: number;
+  }> {
+    if (entity !== 'project') return { items: [], nextCursor: null, total: 0 };
+
+    const q = opts?.search?.trim();
+    const status = opts?.status?.trim();
+    const type = opts?.type?.trim();
+    const limit = Math.min(Math.max(opts?.limit ?? 25, 1), 50);
+
     const where: any = { deletedAt: null };
+    const and: any[] = [];
+
     if (q) {
-      where.OR = [
-        { title: { contains: q, mode: 'insensitive' } },
-        { type: { contains: q, mode: 'insensitive' } },
-      ];
+      and.push({
+        OR: [
+          { title: { contains: q, mode: 'insensitive' } },
+          { zipCode: { contains: q, mode: 'insensitive' } },
+          { owner: { is: { email: { contains: q, mode: 'insensitive' } } } },
+          { owner: { is: { name: { contains: q, mode: 'insensitive' } } } },
+          // Match the project type enum by the typed fragment, e.g. "resid" → RESIDENTIAL.
+          ...this.matchProjectTypes(q).map((t) => ({ type: t })),
+        ],
+      });
     }
+    if (status && status !== 'ALL') and.push({ status: status as any });
+    if (type && type !== 'ALL') and.push({ type: type as any });
+    if (and.length) where.AND = and;
+
+    const total = await this.prisma.project.count({ where });
+
+    // Keyset pagination: cursor is the last row's id; Prisma `cursor` + `skip:1`
+    // walks forward over the stable (createdAt desc, id desc) ordering.
     const projects = await this.prisma.project.findMany({
       where,
       select: {
@@ -510,19 +560,39 @@ export class AdminPersonasService {
         title: true,
         type: true,
         status: true,
+        zipCode: true,
+        createdAt: true,
         owner: { select: { email: true, name: true } },
       },
-      orderBy: [{ createdAt: 'desc' }],
-      take: 200,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1, // fetch one extra to know if there's a next page
+      ...(opts?.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
     });
-    return projects.map((p) => ({
-      id: p.id,
-      title: p.title,
-      type: p.type,
-      status: p.status,
-      ownerEmail: p.owner?.email ?? null,
-      ownerName: p.owner?.name ?? null,
-    }));
+
+    const hasMore = projects.length > limit;
+    const page = hasMore ? projects.slice(0, limit) : projects;
+
+    return {
+      items: page.map((p) => ({
+        id: p.id,
+        title: p.title,
+        type: p.type,
+        status: p.status,
+        zipCode: p.zipCode ?? null,
+        ownerEmail: p.owner?.email ?? null,
+        ownerName: p.owner?.name ?? null,
+        createdAt: p.createdAt,
+      })),
+      nextCursor: hasMore ? page[page.length - 1].id : null,
+      total,
+    };
+  }
+
+  /** Map a free-text fragment to matching ProjectType enum values. */
+  private matchProjectTypes(fragment: string): string[] {
+    const f = fragment.toUpperCase().replace(/\s+/g, '_');
+    const ALL_TYPES = ['RESIDENTIAL', 'COMMERCIAL', 'NEW_BUILD'];
+    return ALL_TYPES.filter((t) => t.includes(f));
   }
 
   /** Pending provider signups awaiting vetting (Admin UI approvals queue, §6.5). */

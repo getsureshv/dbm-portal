@@ -56,13 +56,23 @@ export class AdminUsersController {
   @RequirePermission('read', 'user_access')
   @ApiOperation({
     summary:
-      'Selectable records for the Record Access picker (e.g. projects by name/type)',
+      'Searchable, paginated records for the Record Access picker (projects by name/type/zip/owner)',
   })
   async listRecords(
     @Query('entity') entity = 'project',
     @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('type') type?: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.personas.listRecords(entity, search);
+    return this.personas.listRecords(entity, {
+      search,
+      status,
+      type,
+      cursor: cursor || null,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
   }
 
   @Get(':userId/personas')

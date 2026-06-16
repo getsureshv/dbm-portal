@@ -119,18 +119,18 @@ enum ReportStatus {
 // ─── CORE MODELS ───────────────────────────────────────────
 
 model User {
-  id                 String       @id @default(uuid()) @db.Uuid
-  email              String       @unique
-  firebaseUid        String       @unique @map("firebase_uid")
+  id                 String        @id @default(uuid()) @db.Uuid
+  email              String        @unique
+  firebaseUid        String        @unique @map("firebase_uid")
   role               UserRole?
   providerType       ProviderType? @map("provider_type")
   name               String?
   phone              String?
-  languagePreference String       @default("en") @map("language_preference")
-  verificationStatus Boolean      @default(true) @map("verification_status")
-  onboardingComplete Boolean      @default(false) @map("onboarding_complete")
-  createdAt          DateTime     @default(now()) @map("created_at")
-  updatedAt          DateTime     @updatedAt @map("updated_at")
+  languagePreference String        @default("en") @map("language_preference")
+  verificationStatus Boolean       @default(true) @map("verification_status")
+  onboardingComplete Boolean       @default(false) @map("onboarding_complete")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
 
   // Relations
   professionalProfile ProfessionalProfile?
@@ -139,6 +139,7 @@ model User {
   projects            Project[]
   uploadedDocuments   ProjectDocument[]
   chatConversations   ChatConversation[]
+  UserPersona         UserPersona[]
 
   @@map("users")
 }
@@ -146,38 +147,38 @@ model User {
 // ─── PROVIDER PROFILES ─────────────────────────────────────
 
 model ProfessionalProfile {
-  id               String        @id @default(uuid()) @db.Uuid
-  userId           String        @unique @map("user_id") @db.Uuid
-  firstName        String        @map("first_name")
-  middleName       String?       @map("middle_name")
-  lastName         String        @map("last_name")
-  companyName      String        @map("company_name")
-  contactNumber1   String        @map("contact_number_1")
-  contactNumber2   String?       @map("contact_number_2")
-  email            String
-  website          String?
-  address          Json?         // Structured: { street, streetNumber, suite, city, state, country, zipCode }
-  yearsInProfession Int?         @map("years_in_profession")
-  yearsInBusiness  Int?          @map("years_in_business")
-  licenseNumber    String?       @map("license_number")
-  licenseStatus    LicenseStatus @default(NOT_APPLICABLE) @map("license_status")
-  styleOfWork      String[]      @map("style_of_work")
-  awards           String[]      @default([])
-  portfolioKey     String?       @map("portfolio_key") // S3 key
-  profileImageKey  String?       @map("profile_image_key")
-  insuranceCertKey String?       @map("insurance_cert_key")
+  id                String        @id @default(uuid()) @db.Uuid
+  userId            String        @unique @map("user_id") @db.Uuid
+  firstName         String        @map("first_name")
+  middleName        String?       @map("middle_name")
+  lastName          String        @map("last_name")
+  companyName       String        @map("company_name")
+  contactNumber1    String        @map("contact_number_1")
+  contactNumber2    String?       @map("contact_number_2")
+  email             String
+  website           String?
+  address           Json? // Structured: { street, streetNumber, suite, city, state, country, zipCode }
+  yearsInProfession Int?          @map("years_in_profession")
+  yearsInBusiness   Int?          @map("years_in_business")
+  licenseNumber     String?       @map("license_number")
+  licenseStatus     LicenseStatus @default(NOT_APPLICABLE) @map("license_status")
+  styleOfWork       String[]      @map("style_of_work")
+  awards            String[]      @default([])
+  portfolioKey      String?       @map("portfolio_key") // S3 key
+  profileImageKey   String?       @map("profile_image_key")
+  insuranceCertKey  String?       @map("insurance_cert_key")
 
   // Trade taxonomy
-  tradeCategoryId  String?       @map("trade_category_id") @db.Uuid
-  tradeNameId      String?       @map("trade_name_id") @db.Uuid
+  tradeCategoryId String? @map("trade_category_id") @db.Uuid
+  tradeNameId     String? @map("trade_name_id") @db.Uuid
 
-  createdAt        DateTime      @default(now()) @map("created_at")
-  updatedAt        DateTime      @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tradeCategory    TradeCategory? @relation(fields: [tradeCategoryId], references: [id])
-  tradeName        TradeName?    @relation(fields: [tradeNameId], references: [id])
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tradeCategory TradeCategory? @relation(fields: [tradeCategoryId], references: [id])
+  tradeName     TradeName?     @relation(fields: [tradeNameId], references: [id])
 
   @@index([tradeCategoryId])
   @@index([tradeNameId])
@@ -186,67 +187,67 @@ model ProfessionalProfile {
 }
 
 model SupplierProfile {
-  id               String        @id @default(uuid()) @db.Uuid
-  userId           String        @unique @map("user_id") @db.Uuid
-  firstName        String        @map("first_name")
-  middleName       String?       @map("middle_name")
-  lastName         String        @map("last_name")
-  companyName      String        @map("company_name")
-  contactNumber1   String        @map("contact_number_1")
-  contactNumber2   String?       @map("contact_number_2")
-  email            String
-  website          String?
-  address          Json?
-  materialTypes    String[]      @map("material_types")
-  servicesProvided String[]      @map("services_provided")
-  multipleLocations Boolean      @default(false) @map("multiple_locations")
-  secondaryAddresses Json?       @map("secondary_addresses") // Array of Address objects
-  licenseStatus    LicenseStatus @default(NOT_APPLICABLE) @map("license_status")
-  profileImageKey  String?       @map("profile_image_key")
-  portfolioKey     String?       @map("portfolio_key")
+  id                 String        @id @default(uuid()) @db.Uuid
+  userId             String        @unique @map("user_id") @db.Uuid
+  firstName          String        @map("first_name")
+  middleName         String?       @map("middle_name")
+  lastName           String        @map("last_name")
+  companyName        String        @map("company_name")
+  contactNumber1     String        @map("contact_number_1")
+  contactNumber2     String?       @map("contact_number_2")
+  email              String
+  website            String?
+  address            Json?
+  materialTypes      String[]      @map("material_types")
+  servicesProvided   String[]      @map("services_provided")
+  multipleLocations  Boolean       @default(false) @map("multiple_locations")
+  secondaryAddresses Json?         @map("secondary_addresses") // Array of Address objects
+  licenseStatus      LicenseStatus @default(NOT_APPLICABLE) @map("license_status")
+  profileImageKey    String?       @map("profile_image_key")
+  portfolioKey       String?       @map("portfolio_key")
 
-  tradeCategoryId  String?       @map("trade_category_id") @db.Uuid
-  tradeNameId      String?       @map("trade_name_id") @db.Uuid
+  tradeCategoryId String? @map("trade_category_id") @db.Uuid
+  tradeNameId     String? @map("trade_name_id") @db.Uuid
 
-  createdAt        DateTime      @default(now()) @map("created_at")
-  updatedAt        DateTime      @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tradeCategory    TradeCategory? @relation(fields: [tradeCategoryId], references: [id])
-  tradeName        TradeName?    @relation(fields: [tradeNameId], references: [id])
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tradeCategory TradeCategory? @relation(fields: [tradeCategoryId], references: [id])
+  tradeName     TradeName?     @relation(fields: [tradeNameId], references: [id])
 
   @@map("supplier_profiles")
 }
 
 model FreightProfile {
-  id               String        @id @default(uuid()) @db.Uuid
-  userId           String        @unique @map("user_id") @db.Uuid
-  firstName        String        @map("first_name")
-  middleName       String?       @map("middle_name")
-  lastName         String        @map("last_name")
-  companyName      String        @map("company_name")
-  contactNumber1   String        @map("contact_number_1")
-  contactNumber2   String?       @map("contact_number_2")
-  email            String
-  website          String?
-  address          Json?
-  serviceTypes     String[]      @map("service_types")
-  servicesProvided String[]      @map("services_provided")
-  multipleLocations Boolean      @default(false) @map("multiple_locations")
-  secondaryAddresses Json?       @map("secondary_addresses")
-  licenseStatus    LicenseStatus @default(NOT_APPLICABLE) @map("license_status")
-  profileImageKey  String?       @map("profile_image_key")
-  portfolioKey     String?       @map("portfolio_key")
+  id                 String        @id @default(uuid()) @db.Uuid
+  userId             String        @unique @map("user_id") @db.Uuid
+  firstName          String        @map("first_name")
+  middleName         String?       @map("middle_name")
+  lastName           String        @map("last_name")
+  companyName        String        @map("company_name")
+  contactNumber1     String        @map("contact_number_1")
+  contactNumber2     String?       @map("contact_number_2")
+  email              String
+  website            String?
+  address            Json?
+  serviceTypes       String[]      @map("service_types")
+  servicesProvided   String[]      @map("services_provided")
+  multipleLocations  Boolean       @default(false) @map("multiple_locations")
+  secondaryAddresses Json?         @map("secondary_addresses")
+  licenseStatus      LicenseStatus @default(NOT_APPLICABLE) @map("license_status")
+  profileImageKey    String?       @map("profile_image_key")
+  portfolioKey       String?       @map("portfolio_key")
 
-  tradeCategoryId  String?       @map("trade_category_id") @db.Uuid
-  tradeNameId      String?       @map("trade_name_id") @db.Uuid
+  tradeCategoryId String? @map("trade_category_id") @db.Uuid
+  tradeNameId     String? @map("trade_name_id") @db.Uuid
 
-  createdAt        DateTime      @default(now()) @map("created_at")
-  updatedAt        DateTime      @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tradeCategory    TradeCategory? @relation(fields: [tradeCategoryId], references: [id])
-  tradeName        TradeName?    @relation(fields: [tradeNameId], references: [id])
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tradeCategory TradeCategory? @relation(fields: [tradeCategoryId], references: [id])
+  tradeName     TradeName?     @relation(fields: [tradeNameId], references: [id])
 
   @@map("freight_profiles")
 }
@@ -256,7 +257,7 @@ model FreightProfile {
 model TradeCategory {
   id    String     @id @default(uuid()) @db.Uuid
   name  TradeGroup @unique
-  label String     // Human-readable: "Planning & Design"
+  label String // Human-readable: "Planning & Design"
 
   trades               TradeName[]
   professionalProfiles ProfessionalProfile[]
@@ -267,10 +268,10 @@ model TradeCategory {
 }
 
 model TradeName {
-  id         String  @id @default(uuid()) @db.Uuid
-  categoryId String  @map("category_id") @db.Uuid
-  name       String  // "General Contractor"
-  slug       String  @unique // "general-contractor"
+  id         String @id @default(uuid()) @db.Uuid
+  categoryId String @map("category_id") @db.Uuid
+  name       String // "General Contractor"
+  slug       String @unique // "general-contractor"
 
   category             TradeCategory         @relation(fields: [categoryId], references: [id])
   professionalProfiles ProfessionalProfile[]
@@ -297,35 +298,38 @@ model Project {
   updatedAt         DateTime          @updatedAt @map("updated_at")
 
   // Relations
-  owner             User              @relation(fields: [ownerId], references: [id])
-  documents         ProjectDocument[]
-  scopeDocument     ScopeDocument?
+  owner           User              @relation(fields: [ownerId], references: [id])
+  documents       ProjectDocument[]
+  scopeDocument   ScopeDocument?
   // Phase 5+ stubs
-  invoices          Invoice[]
-  changeOrders      ChangeOrder[]
-  rfis              Rfi[]
-  submittals        Submittal[]
-  deliveryReports   DeliveryReport[]
-  progressReports   ProgressReport[]
+  invoices        Invoice[]
+  changeOrders    ChangeOrder[]
+  rfis            Rfi[]
+  submittals      Submittal[]
+  deliveryReports DeliveryReport[]
+  progressReports ProgressReport[]
 
   @@index([ownerId])
   @@index([zipCode])
   @@index([status])
+  @@index([type])
+  // Keyset pagination order for the admin record picker (FR record-search).
+  @@index([createdAt, id])
   @@map("projects")
 }
 
 model ProjectDocument {
-  id             String           @id @default(uuid()) @db.Uuid
-  projectId      String           @map("project_id") @db.Uuid
-  category       DocumentCategory @default(TECHNICAL)
-  filename       String
-  s3Key          String           @map("s3_key")
-  extractedText  String?          @map("extracted_text")
-  uploadedById   String           @map("uploaded_by_id") @db.Uuid
-  createdAt      DateTime         @default(now()) @map("created_at")
+  id            String           @id @default(uuid()) @db.Uuid
+  projectId     String           @map("project_id") @db.Uuid
+  category      DocumentCategory @default(TECHNICAL)
+  filename      String
+  s3Key         String           @map("s3_key")
+  extractedText String?          @map("extracted_text")
+  uploadedById  String           @map("uploaded_by_id") @db.Uuid
+  createdAt     DateTime         @default(now()) @map("created_at")
 
-  project        Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  uploadedBy     User             @relation(fields: [uploadedById], references: [id])
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploadedBy User    @relation(fields: [uploadedById], references: [id])
 
   @@index([projectId])
   @@map("project_documents")
@@ -343,18 +347,18 @@ model ScopeDocument {
   updatedAt           DateTime    @updatedAt @map("updated_at")
 
   // Structured scope data — populated field-by-field by the AI
-  projectScope        String?     @map("project_scope")
-  dimensions          String?
-  materialGrade       String?     @map("material_grade")
-  timeline            String?
-  milestones          String?
-  specialConditions   String?     @map("special_conditions")
-  preferredStartDate  String?     @map("preferred_start_date")
-  siteConstraints     String?     @map("site_constraints")
-  aestheticPreferences String?    @map("aesthetic_preferences")
+  projectScope         String? @map("project_scope")
+  dimensions           String?
+  materialGrade        String? @map("material_grade")
+  timeline             String?
+  milestones           String?
+  specialConditions    String? @map("special_conditions")
+  preferredStartDate   String? @map("preferred_start_date")
+  siteConstraints      String? @map("site_constraints")
+  aestheticPreferences String? @map("aesthetic_preferences")
 
-  project             Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  interviewTurns      ScopeInterviewTurn[]
+  project        Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  interviewTurns ScopeInterviewTurn[]
 
   @@map("scope_documents")
 }
@@ -368,7 +372,7 @@ model ScopeInterviewTurn {
   fieldPopulated  String?  @map("field_populated") // Which ScopeDocument field was updated
   createdAt       DateTime @default(now()) @map("created_at")
 
-  scopeDocument   ScopeDocument @relation(fields: [scopeDocumentId], references: [id], onDelete: Cascade)
+  scopeDocument ScopeDocument @relation(fields: [scopeDocumentId], references: [id], onDelete: Cascade)
 
   @@index([scopeDocumentId])
   @@map("scope_interview_turns")
@@ -383,8 +387,8 @@ model ChatConversation {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages  ChatMessage[]
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
 
   @@index([userId])
   @@map("chat_conversations")
@@ -393,13 +397,13 @@ model ChatConversation {
 model ChatMessage {
   id             String   @id @default(uuid()) @db.Uuid
   conversationId String   @map("conversation_id") @db.Uuid
-  role           String   // USER | ASSISTANT | TOOL
-  content        Json     // Supports Anthropic content blocks
+  role           String // USER | ASSISTANT | TOOL
+  content        Json // Supports Anthropic content blocks
   tokensIn       Int?     @map("tokens_in")
   tokensOut      Int?     @map("tokens_out")
   createdAt      DateTime @default(now()) @map("created_at")
 
-  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId])
   @@map("chat_messages")
@@ -410,7 +414,7 @@ model ChatMessage {
 model FeatureFlag {
   id        String   @id @default(uuid()) @db.Uuid
   key       String   @unique // e.g. "scope_creation_mode"
-  variant   String   // e.g. "ai_assisted" | "manual_upload"
+  variant   String // e.g. "ai_assisted" | "manual_upload"
   userId    String?  @map("user_id") @db.Uuid // null = global default
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -429,18 +433,20 @@ model Invoice {
   createdAt DateTime      @default(now()) @map("created_at")
   updatedAt DateTime      @updatedAt @map("updated_at")
   project   Project       @relation(fields: [projectId], references: [id])
+
   @@map("invoices")
 }
 
 model ChangeOrder {
-  id          String            @id @default(uuid()) @db.Uuid
-  projectId   String            @map("project_id") @db.Uuid
-  status      ChangeOrderStatus @default(PENDING)
-  description String?
-  impactAmount Decimal?         @map("impact_amount") @db.Decimal(12, 2)
-  createdAt   DateTime          @default(now()) @map("created_at")
-  updatedAt   DateTime          @updatedAt @map("updated_at")
-  project     Project           @relation(fields: [projectId], references: [id])
+  id           String            @id @default(uuid()) @db.Uuid
+  projectId    String            @map("project_id") @db.Uuid
+  status       ChangeOrderStatus @default(PENDING)
+  description  String?
+  impactAmount Decimal?          @map("impact_amount") @db.Decimal(12, 2)
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+  project      Project           @relation(fields: [projectId], references: [id])
+
   @@map("change_orders")
 }
 
@@ -453,6 +459,7 @@ model Rfi {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   project   Project   @relation(fields: [projectId], references: [id])
+
   @@map("rfis")
 }
 
@@ -465,6 +472,7 @@ model Submittal {
   createdAt DateTime        @default(now()) @map("created_at")
   updatedAt DateTime        @updatedAt @map("updated_at")
   project   Project         @relation(fields: [projectId], references: [id])
+
   @@map("submittals")
 }
 
@@ -477,6 +485,7 @@ model DeliveryReport {
   createdAt DateTime       @default(now()) @map("created_at")
   updatedAt DateTime       @updatedAt @map("updated_at")
   project   Project        @relation(fields: [projectId], references: [id])
+
   @@map("delivery_reports")
 }
 
@@ -489,6 +498,7 @@ model ProgressReport {
   createdAt   DateTime     @default(now()) @map("created_at")
   updatedAt   DateTime     @updatedAt @map("updated_at")
   project     Project      @relation(fields: [projectId], references: [id])
+
   @@map("progress_reports")
 }
 
@@ -497,13 +507,13 @@ model ProgressReport {
 // Permits and CodeRules normalize across all city vendors.
 
 enum JurisdictionVendor {
-  ACCELA           // Accela Construct API (per-agency partnership)
-  DALLAS_OPENDATA  // Dallas Socrata OpenData portal (public, no-auth) — preset of SOCRATA
-  SOCRATA          // generic, config-driven Socrata adapter (any Socrata city via fieldMap)
-  SHOVELS          // aggregator fallback
-  ETRAKIT          // CentralSquare eTRAKiT (Flower Mound)
-  ILMS             // Houston legacy (deferred)
-  MOCK             // demo / dev fallback
+  ACCELA // Accela Construct API (per-agency partnership)
+  DALLAS_OPENDATA // Dallas Socrata OpenData portal (public, no-auth) — preset of SOCRATA
+  SOCRATA // generic, config-driven Socrata adapter (any Socrata city via fieldMap)
+  SHOVELS // aggregator fallback
+  ETRAKIT // CentralSquare eTRAKiT (Flower Mound)
+  ILMS // Houston legacy (deferred)
+  MOCK // demo / dev fallback
 }
 
 enum PermitStatus {
@@ -516,61 +526,63 @@ enum PermitStatus {
 }
 
 enum CodeFamily {
-  IBC              // International Building Code
-  IRC              // International Residential Code
-  IECC             // Energy
-  IPC              // Plumbing
-  IMC              // Mechanical
-  NEC              // Electrical (NFPA 70)
-  LOCAL            // City amendment
+  IBC // International Building Code
+  IRC // International Residential Code
+  IECC // Energy
+  IPC // Plumbing
+  IMC // Mechanical
+  NEC // Electrical (NFPA 70)
+  LOCAL // City amendment
 }
 
 model Jurisdiction {
-  id             String             @id @default(uuid()) @db.Uuid
-  name           String             // e.g. "City of Dallas"
-  state          String             @db.VarChar(2)  // "TX" (kept for backwards compat; Phase 3 aliases to regionCode)
-  slug           String             @unique          // "dallas-tx"
-  fips           String?                              // county/place FIPS (US-only; Phase 3 generalizes to geoIds Json)
-  vendor         JurisdictionVendor
-  hasZoning      Boolean            @default(true) @map("has_zoning")
-  adapterConfig  Json?              @map("adapter_config") // tokens scoped to env, NOT secrets
-  zipPrefixes    String[]           @map("zip_prefixes")   // simple address→jurisdiction resolver
+  id                String             @id @default(uuid()) @db.Uuid
+  name              String // e.g. "City of Dallas"
+  state             String             @db.VarChar(2) // "TX" (kept for backwards compat; Phase 3 aliases to regionCode)
+  slug              String             @unique // "dallas-tx"
+  fips              String? // county/place FIPS (US-only; Phase 3 generalizes to geoIds Json)
+  vendor            JurisdictionVendor
+  hasZoning         Boolean            @default(true) @map("has_zoning")
+  adapterConfig     Json?              @map("adapter_config") // tokens scoped to env, NOT secrets
+  zipPrefixes       String[]           @map("zip_prefixes") // simple address→jurisdiction resolver
   // ─── i18n / global-ready fields (Phase 2.5) ───
-  countryCode       String              @map("country_code") @db.Char(2) @default("US")   // ISO 3166-1 alpha-2
-  timezone          String              @default("America/Chicago")                       // IANA tz database
-  measurementSystem MeasurementSystem   @map("measurement_system") @default(IMPERIAL)
-  defaultCurrency   String              @map("default_currency") @db.Char(3) @default("USD") // ISO 4217
-  createdAt      DateTime           @default(now()) @map("created_at")
-  updatedAt      DateTime           @updatedAt @map("updated_at")
-  permits        Permit[]
-  codeRules      CodeRule[]
-  addressLookups AddressLookup[]
-  codeRuleLookups CodeRuleLookup[]
+  countryCode       String             @default("US") @map("country_code") @db.Char(2) // ISO 3166-1 alpha-2
+  timezone          String             @default("America/Chicago") // IANA tz database
+  measurementSystem MeasurementSystem  @default(IMPERIAL) @map("measurement_system")
+  defaultCurrency   String             @default("USD") @map("default_currency") @db.Char(3) // ISO 4217
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  permits           Permit[]
+  codeRules         CodeRule[]
+  addressLookups    AddressLookup[]
+  codeRuleLookups   CodeRuleLookup[]
+
   @@index([countryCode, state])
   @@map("jurisdictions")
 }
 
 enum MeasurementSystem {
-  IMPERIAL    // ft, in, sq ft, lb, °F  — US, Liberia, Myanmar
-  METRIC      // m, mm, m², kg, °C       — rest of world
+  IMPERIAL // ft, in, sq ft, lb, °F  — US, Liberia, Myanmar
+  METRIC // m, mm, m², kg, °C       — rest of world
 }
 
 model Permit {
-  id             String       @id @default(uuid()) @db.Uuid
-  jurisdictionId String       @map("jurisdiction_id") @db.Uuid
-  externalId     String       @map("external_id")           // city's permit number
-  address        String                                      // normalized
-  type           String?                                     // "Residential Deck" etc.
-  status         PermitStatus @default(UNKNOWN)
-  issuedAt       DateTime?    @map("issued_at")
-  finalizedAt    DateTime?    @map("finalized_at")
-  contractor     String?                                     // pro/contractor of record
-  valuation      Decimal?     @db.Decimal(14, 2)
-  valuationCurrency String?   @map("valuation_currency") @db.Char(3)  // ISO 4217; nullable for legacy rows
-  description    String?
-  raw            Json?                                       // raw vendor payload for audit
-  fetchedAt      DateTime     @default(now()) @map("fetched_at")
-  jurisdiction   Jurisdiction @relation(fields: [jurisdictionId], references: [id])
+  id                String       @id @default(uuid()) @db.Uuid
+  jurisdictionId    String       @map("jurisdiction_id") @db.Uuid
+  externalId        String       @map("external_id") // city's permit number
+  address           String // normalized
+  type              String? // "Residential Deck" etc.
+  status            PermitStatus @default(UNKNOWN)
+  issuedAt          DateTime?    @map("issued_at")
+  finalizedAt       DateTime?    @map("finalized_at")
+  contractor        String? // pro/contractor of record
+  valuation         Decimal?     @db.Decimal(14, 2)
+  valuationCurrency String?      @map("valuation_currency") @db.Char(3) // ISO 4217; nullable for legacy rows
+  description       String?
+  raw               Json? // raw vendor payload for audit
+  fetchedAt         DateTime     @default(now()) @map("fetched_at")
+  jurisdiction      Jurisdiction @relation(fields: [jurisdictionId], references: [id])
+
   @@unique([jurisdictionId, externalId])
   @@index([address])
   @@map("permits")
@@ -580,32 +592,34 @@ model CodeRule {
   id             String       @id @default(uuid()) @db.Uuid
   jurisdictionId String       @map("jurisdiction_id") @db.Uuid
   codeFamily     CodeFamily   @map("code_family")
-  section        String                                      // e.g. "R507"
+  section        String // e.g. "R507"
   title          String
-  body           String                                      // Markdown / plain text
-  scopeTags      String[]     @map("scope_tags")             // ["deck","adu","kitchen"]
+  body           String // Markdown / plain text
+  scopeTags      String[]     @map("scope_tags") // ["deck","adu","kitchen"]
   effectiveDate  DateTime?    @map("effective_date")
   sourceUrl      String?      @map("source_url")
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
   jurisdiction   Jurisdiction @relation(fields: [jurisdictionId], references: [id])
+
   @@unique([jurisdictionId, codeFamily, section])
   @@index([jurisdictionId, scopeTags])
   @@map("code_rules")
 }
 
 model AddressLookup {
-  id             String       @id @default(uuid()) @db.Uuid
-  address        String                                       // normalized input
-  jurisdictionId String       @map("jurisdiction_id") @db.Uuid
-  lastSyncedAt   DateTime     @default(now()) @map("last_synced_at")
-  ttlSeconds     Int          @default(86400) @map("ttl_seconds")
+  id                String       @id @default(uuid()) @db.Uuid
+  address           String // normalized input
+  jurisdictionId    String       @map("jurisdiction_id") @db.Uuid
+  lastSyncedAt      DateTime     @default(now()) @map("last_synced_at")
+  ttlSeconds        Int          @default(86400) @map("ttl_seconds")
   // externalIds of the permits returned for THIS lookup. Cached reads use this
   // instead of matching Permit.address, because zip-scoped vendors (Shovels)
   // return the same permits for many addresses and a single Permit row can only
   // carry one address string — matching by address stranded the cache at 0.
-  permitExternalIds String[]  @default([]) @map("permit_external_ids")
-  jurisdiction   Jurisdiction @relation(fields: [jurisdictionId], references: [id])
+  permitExternalIds String[]     @default([]) @map("permit_external_ids")
+  jurisdiction      Jurisdiction @relation(fields: [jurisdictionId], references: [id])
+
   @@unique([address, jurisdictionId])
   @@map("address_lookups")
 }
@@ -617,12 +631,169 @@ model AddressLookup {
 model CodeRuleLookup {
   id             String       @id @default(uuid()) @db.Uuid
   jurisdictionId String       @map("jurisdiction_id") @db.Uuid
-  scope          String       @default("")            // "" = no-scope/general lookup
+  scope          String       @default("") // "" = no-scope/general lookup
   lastSyncedAt   DateTime     @default(now()) @map("last_synced_at")
   ttlSeconds     Int          @default(604800) @map("ttl_seconds") // 7d — codes change slowly
   sourceUrl      String?      @map("source_url")
   ruleCount      Int          @default(0) @map("rule_count")
   jurisdiction   Jurisdiction @relation(fields: [jurisdictionId], references: [id])
+
   @@unique([jurisdictionId, scope])
   @@map("code_rule_lookups")
+}
+
+// ─── PERSONA & ACCESS MANAGEMENT ───────────────────────────
+// Foundation authorization module. Replaces the single User.role enum with a
+// many-personas-per-user model + entity/action/scope permissions + per-record
+// grants + append-only audit. Spec: DBM-persona-access-module-spec.md §4.
+// NOTE: legacy User.role / User.providerType columns are kept during the build
+// (back-filled into UserPersona) and dropped in a later cleanup migration.
+
+enum PersonaBaseType {
+  CLIENT
+  PROFESSIONAL
+  SUPPLIER
+  FREIGHT
+  SERVICE_PROVIDER
+  ADMIN
+  CUSTOM
+}
+
+enum PersonaStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+// scope:own / scope:assigned resolution lives on the Entity registry rows.
+enum PermissionScope {
+  ALL
+  OWN
+  ASSIGNED
+}
+
+enum UserPersonaStatus {
+  PENDING
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum GranteeType {
+  USER
+  PERSONA
+}
+
+enum RecordGrantStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+// Admin-managed role template. Holds embedded permissions (one row per entity
+// via PersonaPermission). Seeded as data; editable by admin afterwards.
+model Persona {
+  id               String          @id @default(uuid()) @db.Uuid
+  name             String
+  slug             String          @unique
+  description      String?
+  baseType         PersonaBaseType @map("base_type")
+  isSystem         Boolean         @default(false) @map("is_system")
+  status           PersonaStatus   @default(ACTIVE)
+  requiresApproval Boolean         @default(false) @map("requires_approval")
+  createdBy        String?         @map("created_by") @db.Uuid
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  permissions  PersonaPermission[]
+  userPersonas UserPersona[]
+
+  @@index([status])
+  @@map("personas")
+}
+
+// One row per (persona, entity): the actions allowed and the scope.
+model PersonaPermission {
+  id        String          @id @default(uuid()) @db.Uuid
+  personaId String          @map("persona_id") @db.Uuid
+  entityKey String          @map("entity_key")
+  actions   String[] // e.g. ["read","update","create"]
+  scope     PermissionScope @default(OWN)
+
+  persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  entity  Entity  @relation(fields: [entityKey], references: [key])
+
+  @@unique([personaId, entityKey])
+  @@index([entityKey])
+  @@map("persona_permissions")
+}
+
+// Resource registry — drives the admin permission-matrix UI and scope
+// resolution. Editable by admin without a code change.
+model Entity {
+  key                  String   @id // "project", "bid", "contract", ...
+  label                String
+  actions              String[] // supported actions for this entity
+  supportsRecordGrants Boolean  @default(true) @map("supports_record_grants")
+  ownerField           String?  @map("owner_field") // resolves scope:own (e.g. "clientId")
+  participantSource    String?  @map("participant_source") // resolves scope:assigned
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  permissions PersonaPermission[]
+
+  @@map("entities")
+}
+
+// A persona attached to a user account. One person, many personas.
+model UserPersona {
+  id         String            @id @default(uuid()) @db.Uuid
+  userId     String            @map("user_id") @db.Uuid
+  personaId  String            @map("persona_id") @db.Uuid
+  assignedBy String?           @map("assigned_by") @db.Uuid
+  assignedAt DateTime          @default(now()) @map("assigned_at")
+  expiresAt  DateTime?         @map("expires_at")
+  status     UserPersonaStatus @default(ACTIVE)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  persona Persona @relation(fields: [personaId], references: [id])
+
+  @@unique([userId, personaId])
+  @@index([userId, status])
+  @@map("user_personas")
+}
+
+// Per-record exception: grant actions on one record to a user or a persona.
+model RecordGrant {
+  id          String            @id @default(uuid()) @db.Uuid
+  entity      String // entity key
+  recordId    String            @map("record_id")
+  granteeType GranteeType       @map("grantee_type")
+  granteeId   String            @map("grantee_id") @db.Uuid
+  actions     String[]
+  reason      String // mandatory free-text
+  grantedBy   String            @map("granted_by") @db.Uuid
+  grantedAt   DateTime          @default(now()) @map("granted_at")
+  expiresAt   DateTime?         @map("expires_at")
+  status      RecordGrantStatus @default(ACTIVE)
+
+  @@index([entity, recordId, status])
+  @@index([granteeType, granteeId, status])
+  @@map("record_grants")
+}
+
+// Append-only audit of every authorization change. Written transactionally.
+model PermissionAuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorId     String?  @map("actor_id") @db.Uuid
+  action      String // e.g. "persona.updated"
+  subjectType String   @map("subject_type")
+  subjectId   String?  @map("subject_id")
+  before      Json?
+  after       Json?
+  at          DateTime @default(now())
+
+  @@index([actorId])
+  @@index([subjectType, subjectId])
+  @@index([at])
+  @@map("permission_audit_log")
 }

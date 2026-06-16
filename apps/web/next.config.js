@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Standalone output so the app can run as a single self-contained Node server
+  // for the public sandbox preview.
+  output: process.env.NEXT_STANDALONE === '1' ? 'standalone' : undefined,
   // Proxy API calls to NestJS backend
   async rewrites() {
     return [

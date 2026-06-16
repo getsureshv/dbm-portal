@@ -2,10 +2,14 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { SetRoleDto } from './dto/set-role.dto';
 import { CreateProfileDto } from './dto/create-profile.dto';
+import { PersonaAssignmentService } from '../access/persona-assignment.service';
 
 @Injectable()
 export class OnboardingService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private personaAssignment: PersonaAssignmentService,
+  ) {}
 
   async setRole(userId: string, setRoleDto: SetRoleDto) {
     // Check if user already has a role set
@@ -30,10 +34,21 @@ export class OnboardingService {
       },
     });
 
+    // Auto-assign the persona that matches this role/providerType (FR-1…FR-5).
+    // Provider personas land PENDING (require admin approval); client/admin are
+    // ACTIVE immediately. Additive: legacy role columns stay authoritative until
+    // the final cleanup PR. Never blocks onboarding if mapping is unknown.
+    const assignment = await this.personaAssignment.assignFromRole(
+      userId,
+      updatedUser.role,
+      updatedUser.providerType,
+    );
+
     return {
       message: 'Role set successfully',
       role: updatedUser.role,
       providerType: updatedUser.providerType,
+      persona: assignment, // { personaSlug, status } | null
     };
   }
 

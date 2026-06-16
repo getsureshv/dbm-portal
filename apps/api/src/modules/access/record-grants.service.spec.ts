@@ -257,3 +257,157 @@ describe('RecordGrantsService.whoCanAccess', () => {
     expect(grant?.detail).toMatchObject({ grantId: 'g1', reason: 'audit' });
   });
 });
+
+// ── Owner self-service grants (POST /projects/:id/grants) ────────────────────
+// The controller's record-level guard already proved the caller owns the
+// project; these tests cover the service's email-resolution, invite creation,
+// action clamping and owner-scoped revoke.
+describe('RecordGrantsService.ownerGrant', () => {
+  it('grants to an EXISTING user by email (no invite), clamped to read/update', async () => {
+    const prisma = mockPrisma({
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'owner1-id' }),
+        create: jest.fn(),
+      },
+    });
+    const svc = new RecordGrantsService(prisma, mockPermissions(), mockAudit());
+
+    const res = await svc.ownerGrant({
+      recordId: 'p1',
+      granteeEmail: 'getsureshv.owner1@gmail.com',
+      grantedBy: 'owner-self',
+    });
+
+    expect(res.invited).toBe(false);
+    expect(prisma.user.create).not.toHaveBeenCalled();
+    expect(prisma.recordGrant.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        entity: 'project',
+        recordId: 'p1',
+        granteeType: 'USER',
+        granteeId: 'owner1-id',
+        actions: ['read', 'update'], // default when none requested
+        status: 'ACTIVE',
+      }),
+    });
+  });
+
+  it('INVITES a not-yet-registered email by creating a pending placeholder user', async () => {
+    const created = { id: 'invited-id' };
+    const prisma = mockPrisma({
+      user: {
+        findUnique: jest.fn().mockResolvedValue(null), // email not found
+        create: jest.fn().mockResolvedValue(created),
+      },
+    });
+    const svc = new RecordGrantsService(prisma, mockPermissions(), mockAudit());
+
+    const res = await svc.ownerGrant({
+      recordId: 'p1',
+      granteeEmail: 'New.Person@Example.com',
+      actions: ['read'],
+      grantedBy: 'owner-self',
+    });
+
+    expect(res.invited).toBe(true);
+    expect(prisma.user.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        email: 'new.person@example.com', // normalized lower-case
+        firebaseUid: 'invite:new.person@example.com',
+        onboardingComplete: false,
+      }),
+      select: { id: true },
+    });
+    expect(prisma.recordGrant.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ granteeId: 'invited-id', actions: ['read'] }),
+    });
+  });
+
+  it('drops non-delegatable actions (delete/grant) and keeps only read/update', async () => {
+    const prisma = mockPrisma({
+      user: { findUnique: jest.fn().mockResolvedValue({ id: 'u2' }), create: jest.fn() },
+    });
+    const svc = new RecordGrantsService(prisma, mockPermissions(), mockAudit());
+
+    await svc.ownerGrant({
+      recordId: 'p1',
+      granteeEmail: 'x@y.com',
+      actions: ['read', 'delete', 'grant', 'update'],
+      grantedBy: 'owner-self',
+    });
+
+    expect(prisma.recordGrant.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ actions: ['read', 'update'] }),
+    });
+  });
+
+  it('rejects when no delegatable action remains after clamping', async () => {
+    const prisma = mockPrisma({
+      user: { findUnique: jest.fn().mockResolvedValue({ id: 'u2' }), create: jest.fn() },
+    });
+    const svc = new RecordGrantsService(prisma, mockPermissions(), mockAudit());
+
+    await expect(
+      svc.ownerGrant({
+        recordId: 'p1',
+        granteeEmail: 'x@y.com',
+        actions: ['delete'],
+        grantedBy: 'owner-self',
+      }),
+    ).rejects.toThrow(/read.*update/i);
+    expect(prisma.recordGrant.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid email', async () => {
+    const prisma = mockPrisma();
+    const svc = new RecordGrantsService(prisma, mockPermissions(), mockAudit());
+    await expect(
+      svc.ownerGrant({ recordId: 'p1', granteeEmail: 'not-an-email', grantedBy: 'o' }),
+    ).rejects.toThrow(/valid grantee email/i);
+  });
+
+  it('rejects granting to yourself', async () => {
+    const prisma = mockPrisma({
+      user: { findUnique: jest.fn().mockResolvedValue({ id: 'self' }), create: jest.fn() },
+    });
+    const svc = new RecordGrantsService(prisma, mockPermissions(), mockAudit());
+    await expect(
+      svc.ownerGrant({ recordId: 'p1', granteeEmail: 'me@me.com', grantedBy: 'self' }),
+    ).rejects.toThrow(/already own/i);
+  });
+});
+
+describe('RecordGrantsService.ownerRevoke', () => {
+  it('revokes a grant that belongs to the given project', async () => {
+    const prisma = mockPrisma({
+      recordGrant: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce({ id: 'g1', entity: 'project', recordId: 'p1' }) // ownerRevoke lookup
+          .mockResolvedValueOnce({ id: 'g1', status: 'ACTIVE', granteeType: 'USER', granteeId: 'u1' }), // revoke() lookup
+        update: jest.fn().mockResolvedValue({ id: 'g1', status: 'REVOKED' }),
+        create: jest.fn(),
+        findMany: jest.fn(),
+        updateMany: jest.fn(),
+      },
+    });
+    const svc = new RecordGrantsService(prisma, mockPermissions(), mockAudit());
+    const res = await svc.ownerRevoke('p1', 'g1', 'owner-self');
+    expect(res).toEqual({ id: 'g1', status: 'REVOKED' });
+  });
+
+  it('refuses to revoke a grant belonging to a different project (404)', async () => {
+    const prisma = mockPrisma({
+      recordGrant: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'g1', entity: 'project', recordId: 'OTHER' }),
+        update: jest.fn(),
+        create: jest.fn(),
+        findMany: jest.fn(),
+        updateMany: jest.fn(),
+      },
+    });
+    const svc = new RecordGrantsService(prisma, mockPermissions(), mockAudit());
+    await expect(svc.ownerRevoke('p1', 'g1', 'owner-self')).rejects.toThrow(NotFoundException);
+    expect(prisma.recordGrant.update).not.toHaveBeenCalled();
+  });
+});

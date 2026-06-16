@@ -21,8 +21,10 @@ import { RequirePermission } from '../access/require-permission.decorator';
 import { ProjectsService } from './projects.service';
 import { ScopePdfService } from './scope-pdf.service';
 import { PermissionsService } from '../access/permissions.service';
+import { RecordGrantsService } from '../access/record-grants.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
+import { GrantProjectAccessDto } from './dto/grant-project-access.dto';
 
 @ApiTags('Projects')
 @Controller('projects')
@@ -33,6 +35,7 @@ export class ProjectsController {
     private projectsService: ProjectsService,
     private scopePdfService: ScopePdfService,
     private permissions: PermissionsService,
+    private grants: RecordGrantsService,
   ) {}
 
   @Post()
@@ -127,6 +130,51 @@ export class ProjectsController {
   async deleteProject(@Req() req: any, @Param('id') id: string) {
     const userId = req.userId;
     await this.projectsService.deleteProject(id, userId);
+  }
+
+  // ── Owner self-service access sharing ───────────────────────────────────
+  // An owner can share THEIR OWN project with another user. These routes are
+  // gated by `update`@`project` with the record id, so the PermissionGuard
+  // confirms (record-level, scope OWN) that the caller actually owns/can-update
+  // this specific project before any grant is issued — no admin role required,
+  // and an owner can never touch a project they don't own (guard 404s).
+
+  @Get(':id/grants')
+  @RequirePermission('update', 'project')
+  @ApiOperation({ summary: 'List the access grants on a project you own' })
+  async listProjectGrants(@Param('id') id: string) {
+    return this.grants.listOwnerGrants(id);
+  }
+
+  @Post(':id/grants')
+  @RequirePermission('update', 'project')
+  @ApiOperation({
+    summary: 'Grant another user read/update access to a project you own',
+  })
+  async grantProjectAccess(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() dto: GrantProjectAccessDto,
+  ) {
+    return this.grants.ownerGrant({
+      recordId: id,
+      granteeEmail: dto.email,
+      actions: dto.actions,
+      reason: dto.reason,
+      expiresAt: dto.expiresAt ?? null,
+      grantedBy: req.userId,
+    });
+  }
+
+  @Post(':id/grants/:grantId/revoke')
+  @RequirePermission('update', 'project')
+  @ApiOperation({ summary: 'Revoke an access grant on a project you own' })
+  async revokeProjectAccess(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('grantId') grantId: string,
+  ) {
+    return this.grants.ownerRevoke(id, grantId, req.userId);
   }
 
   @Post(':id/documents')

@@ -52,9 +52,13 @@ export class RecordGrantsService {
     reason: string;
     expiresAt?: string | null;
     grantedBy: string;
+    /** When the caller already resolved/created the grantee, skip the lookup. */
+    skipGranteeValidation?: boolean;
   }) {
     // Validate the grantee exists so we never issue a dangling grant.
-    if (input.granteeType === 'USER') {
+    if (input.skipGranteeValidation) {
+      // caller guarantees the grantee row exists (e.g. ownerGrant just created it)
+    } else if (input.granteeType === 'USER') {
       const u = await this.prisma.user.findUnique({
         where: { id: input.granteeId },
         select: { id: true },
@@ -267,6 +271,141 @@ export class RecordGrantsService {
       where: { entity, recordId },
       orderBy: { grantedAt: 'desc' },
     });
+  }
+
+  /**
+   * Owner-facing grant on a single project (self-service delegation).
+   *
+   * Unlike create(), this is invoked by a project OWNER (not an admin) for one
+   * of *their own* projects — the controller has already enforced, via the
+   * record-level PermissionGuard (`update`@`project` with the recordId), that
+   * the caller may update this specific project. Here we only:
+   *   - resolve the grantee by EMAIL (owners think in emails, not user ids),
+   *   - create a pending placeholder user if the email isn't registered yet
+   *     (the auth login flow reconciles by email on first sign-in, attaching
+   *     the real Firebase uid — see AuthService.createSession), and
+   *   - clamp the granted actions to a safe owner-delegatable set (read/update
+   *     only — never delete, never grant/revoke), so an owner can never use
+   *     this path to escalate beyond what they hold.
+   *
+   * Returns { grant, invited } where `invited` is true when a placeholder user
+   * was just created for a not-yet-registered email.
+   */
+  async ownerGrant(input: {
+    recordId: string;
+    granteeEmail: string;
+    actions?: string[];
+    reason?: string;
+    expiresAt?: string | null;
+    grantedBy: string;
+  }): Promise<{ grant: any; invited: boolean }> {
+    const email = input.granteeEmail.trim().toLowerCase();
+    if (!email || !email.includes('@')) {
+      throw new BadRequestException('A valid grantee email is required');
+    }
+
+    // Clamp to the owner-delegatable action set. Owners may share read/update;
+    // delete and grant/revoke are deliberately excluded so this endpoint can
+    // never be used to escalate privileges or hand off ownership.
+    const ALLOWED = ['read', 'update'];
+    const requested = (input.actions && input.actions.length
+      ? input.actions
+      : ['read', 'update']
+    ).map((a) => a.toLowerCase());
+    const actions = requested.filter((a) => ALLOWED.includes(a));
+    if (actions.length === 0) {
+      throw new BadRequestException(
+        'Owners can grant only "read" and/or "update" on their projects',
+      );
+    }
+
+    // Resolve (or invite) the grantee.
+    let grantee = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    let invited = false;
+    if (!grantee) {
+      // Create a pending placeholder. firebaseUid is NOT NULL + unique, so we
+      // seed a deterministic placeholder keyed on the email; the login flow's
+      // email-match branch swaps in the real uid on first sign-in.
+      grantee = await this.prisma.user.create({
+        data: {
+          email,
+          firebaseUid: `invite:${email}`,
+          onboardingComplete: false,
+          verificationStatus: false,
+        },
+        select: { id: true },
+      });
+      invited = true;
+    }
+
+    if (grantee.id === input.grantedBy) {
+      throw new BadRequestException('You already own this project');
+    }
+
+    const grant = await this.create({
+      entity: 'project',
+      recordId: input.recordId,
+      granteeType: 'USER',
+      granteeId: grantee.id,
+      actions,
+      reason: input.reason?.trim() || `Owner shared project with ${email}`,
+      expiresAt: input.expiresAt ?? null,
+      grantedBy: input.grantedBy,
+      skipGranteeValidation: true, // grantee resolved/created just above
+    });
+
+    return { grant, invited };
+  }
+
+  /**
+   * Owner-facing list of active grants on a single project, with grantee email
+   * resolved for display. The controller has already enforced (record-level
+   * guard) that the caller may read/update this specific project.
+   */
+  async listOwnerGrants(recordId: string) {
+    const grants = await this.prisma.recordGrant.findMany({
+      where: { entity: 'project', recordId, granteeType: 'USER' },
+      orderBy: { grantedAt: 'desc' },
+    });
+    const out = [] as any[];
+    for (const g of grants) {
+      const u = await this.prisma.user.findUnique({
+        where: { id: g.granteeId },
+        select: { email: true, name: true, onboardingComplete: true },
+      });
+      out.push({
+        id: g.id,
+        granteeId: g.granteeId,
+        granteeEmail: u?.email ?? null,
+        granteeName: u?.name ?? null,
+        pendingInvite: u ? u.onboardingComplete === false : false,
+        actions: g.actions,
+        reason: g.reason,
+        status: g.status,
+        expiresAt: g.expiresAt,
+        grantedAt: g.grantedAt,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Owner-facing revoke. Verifies the grant targets the given project record
+   * before revoking, so an owner (who has been authorized for THIS project by
+   * the controller guard) can never revoke a grant belonging to another record.
+   */
+  async ownerRevoke(recordId: string, grantId: string, actorId: string) {
+    const grant = await this.prisma.recordGrant.findUnique({
+      where: { id: grantId },
+      select: { id: true, entity: true, recordId: true },
+    });
+    if (!grant || grant.entity !== 'project' || grant.recordId !== recordId) {
+      throw new NotFoundException('Record grant not found for this project');
+    }
+    return this.revoke(grantId, actorId);
   }
 
   /** Bust the permission cache for every principal a grant affects. */

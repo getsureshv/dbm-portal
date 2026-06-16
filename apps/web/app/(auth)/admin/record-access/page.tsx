@@ -17,8 +17,117 @@ import {
   ApiEntity,
   ApiAccessPrincipal,
   ApiRecordGrant,
+  ApiRecordListItem,
 } from '../../../../lib/api';
 import AdminGuard from '../AdminGuard';
+
+// Searchable project picker: type to filter by name/type, pick from the list.
+// Selecting a project sets its UUID behind the scenes — admins never see a raw ID.
+function ProjectPicker({
+  value,
+  onSelect,
+}: {
+  value: { id: string; label: string } | null;
+  onSelect: (record: { id: string; label: string } | null) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const [records, setRecords] = useState<ApiRecordListItem[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    const t = setTimeout(() => {
+      admin
+        .listRecords('project', query.trim() || undefined)
+        .then((r) => {
+          if (active) setRecords(r);
+        })
+        .catch(() => {
+          if (active) setRecords([]);
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    }, 200);
+    return () => {
+      active = false;
+      clearTimeout(t);
+    };
+  }, [query]);
+
+  if (value) {
+    return (
+      <div className="flex-1 min-w-[200px] flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
+        <span className="text-sm text-gray-900 truncate flex-1">{value.label}</span>
+        <button
+          type="button"
+          onClick={() => {
+            onSelect(null);
+            setQuery('');
+          }}
+          className="text-gray-400 hover:text-gray-600 shrink-0"
+          aria-label="Clear selected project"
+        >
+          <X size={15} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative flex-1 min-w-[200px]">
+      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+      <input
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Search projects by name or type"
+        className="w-full rounded-lg border border-gray-300 pl-9 pr-3 py-2 text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+      />
+      {open && (
+        <div className="absolute z-20 mt-1 w-full max-h-64 overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+          {loading && (
+            <p className="px-3 py-2 text-xs text-gray-400 flex items-center gap-1.5">
+              <Loader2 size={12} className="animate-spin" /> Loading…
+            </p>
+          )}
+          {!loading && records.length === 0 && (
+            <p className="px-3 py-3 text-xs text-gray-400">No projects found.</p>
+          )}
+          {records.map((r) => {
+            const label = `${r.title} — ${r.type} (${r.status})`;
+            return (
+              <button
+                key={r.id}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  onSelect({ id: r.id, label });
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-amber-50"
+              >
+                <p className="text-sm text-gray-900">
+                  {r.title}{' '}
+                  <span className="text-xs text-gray-500">— {r.type} ({r.status})</span>
+                </p>
+                {r.ownerEmail && (
+                  <p className="text-xs text-gray-400">owner: {r.ownerEmail}</p>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function sourceMeta(source: string) {
   switch (source) {
@@ -38,12 +147,14 @@ function sourceMeta(source: string) {
 function GrantModal({
   entity,
   recordId,
+  recordLabel,
   entities,
   onClose,
   onGranted,
 }: {
   entity: string;
   recordId: string;
+  recordLabel?: string | null;
   entities: ApiEntity[];
   onClose: () => void;
   onGranted: () => void;
@@ -74,18 +185,35 @@ function GrantModal({
     setSaving(true);
     setError(null);
     try {
+      let resolvedGranteeId = granteeId.trim();
+      // For a USER grantee, accept an email and resolve it to the user's id
+      // (an admin shouldn't have to know raw UUIDs). UUIDs still pass through.
+      const isUuid =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          resolvedGranteeId,
+        );
+      if (granteeType === 'USER' && !isUuid) {
+        const found = await admin.userPersonas(resolvedGranteeId);
+        resolvedGranteeId = found.user.id;
+      }
       await admin.createRecordGrant({
         entity,
         recordId,
         granteeType,
-        granteeId: granteeId.trim(),
+        granteeId: resolvedGranteeId,
         actions: Array.from(actions),
         reason: reason.trim(),
         expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined,
       });
       onGranted();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to issue grant');
+      setError(
+        err instanceof Error
+          ? granteeType === 'USER' && /not found/i.test(err.message)
+            ? 'No user found with that email.'
+            : err.message
+          : 'Failed to issue grant',
+      );
       setSaving(false);
     }
   };
@@ -101,8 +229,15 @@ function GrantModal({
         </div>
         <form onSubmit={submit} className="px-5 py-4 space-y-4">
           <p className="text-xs text-gray-500">
-            Granting access to <span className="font-mono">{entity}</span> /{' '}
-            <span className="font-mono">{recordId}</span>
+            Granting access to{' '}
+            {recordLabel ? (
+              <span className="font-medium text-gray-700">{recordLabel}</span>
+            ) : (
+              <>
+                <span className="font-mono">{entity}</span> /{' '}
+                <span className="font-mono">{recordId}</span>
+              </>
+            )}
           </p>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Grantee type</label>
@@ -125,14 +260,22 @@ function GrantModal({
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
-              {granteeType === 'USER' ? 'User ID' : 'Persona ID'}
+              {granteeType === 'USER' ? 'User email' : 'Persona ID'}
             </label>
             <input
               value={granteeId}
               onChange={(e) => setGranteeId(e.target.value)}
               required
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+              placeholder={granteeType === 'USER' ? 'owner@example.com' : ''}
+              className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none ${
+                granteeType === 'USER' ? '' : 'font-mono'
+              }`}
             />
+            {granteeType === 'USER' && (
+              <p className="mt-1 text-[11px] text-gray-400">
+                Enter the person’s email — we’ll look up their account.
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Actions</label>
@@ -199,6 +342,9 @@ function RecordAccessInner() {
   const [entities, setEntities] = useState<ApiEntity[]>([]);
   const [entity, setEntity] = useState('project');
   const [recordId, setRecordId] = useState('');
+  const [selectedProject, setSelectedProject] = useState<{ id: string; label: string } | null>(
+    null,
+  );
   const [principals, setPrincipals] = useState<ApiAccessPrincipal[] | null>(null);
   const [grants, setGrants] = useState<ApiRecordGrant[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -218,7 +364,7 @@ function RecordAccessInner() {
 
   const lookup = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    const id = recordId.trim();
+    const id = entity === 'project' && selectedProject ? selectedProject.id : recordId.trim();
     if (!id) return;
     setLoading(true);
     setError(null);
@@ -276,7 +422,11 @@ function RecordAccessInner() {
       <form onSubmit={lookup} className="flex gap-2 mb-6 flex-wrap">
         <select
           value={entity}
-          onChange={(e) => setEntity(e.target.value)}
+          onChange={(e) => {
+            setEntity(e.target.value);
+            setSelectedProject(null);
+            setRecordId('');
+          }}
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
         >
           {entities.map((e) => (
@@ -285,18 +435,22 @@ function RecordAccessInner() {
             </option>
           ))}
         </select>
-        <div className="relative flex-1 min-w-[200px]">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            value={recordId}
-            onChange={(e) => setRecordId(e.target.value)}
-            placeholder="Record ID"
-            className="w-full rounded-lg border border-gray-300 pl-9 pr-3 py-2 text-sm font-mono focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
-          />
-        </div>
+        {entity === 'project' ? (
+          <ProjectPicker value={selectedProject} onSelect={setSelectedProject} />
+        ) : (
+          <div className="relative flex-1 min-w-[200px]">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={recordId}
+              onChange={(e) => setRecordId(e.target.value)}
+              placeholder="Record ID"
+              className="w-full rounded-lg border border-gray-300 pl-9 pr-3 py-2 text-sm font-mono focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+            />
+          </div>
+        )}
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || (entity === 'project' ? !selectedProject : !recordId.trim())}
           className="px-4 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-60 flex items-center gap-2"
         >
           {loading && <Loader2 size={14} className="animate-spin" />}
@@ -414,6 +568,11 @@ function RecordAccessInner() {
         <GrantModal
           entity={queried.entity}
           recordId={queried.recordId}
+          recordLabel={
+            queried.entity === 'project' && selectedProject?.id === queried.recordId
+              ? selectedProject.label
+              : null
+          }
           entities={entities}
           onClose={() => setShowGrant(false)}
           onGranted={() => {

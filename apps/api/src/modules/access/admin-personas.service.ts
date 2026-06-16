@@ -486,6 +486,45 @@ export class AdminPersonasService {
     return this.userPersonas(user.id);
   }
 
+  /**
+   * List selectable records for a given entity so the Record Access UI can offer
+   * a friendly name/type picker instead of asking admins to paste a raw UUID.
+   * Only `project` has real records today; other entities return an empty list
+   * (the UI falls back to manual ID entry for those). Supports a case-insensitive
+   * search across title/type.
+   */
+  async listRecords(entity: string, search?: string) {
+    if (entity !== 'project') return [];
+    const q = search?.trim();
+    const where: any = { deletedAt: null };
+    if (q) {
+      where.OR = [
+        { title: { contains: q, mode: 'insensitive' } },
+        { type: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+    const projects = await this.prisma.project.findMany({
+      where,
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        status: true,
+        owner: { select: { email: true, name: true } },
+      },
+      orderBy: [{ createdAt: 'desc' }],
+      take: 200,
+    });
+    return projects.map((p) => ({
+      id: p.id,
+      title: p.title,
+      type: p.type,
+      status: p.status,
+      ownerEmail: p.owner?.email ?? null,
+      ownerName: p.owner?.name ?? null,
+    }));
+  }
+
   /** Pending provider signups awaiting vetting (Admin UI approvals queue, §6.5). */
   async pendingApprovals() {
     const rows = await this.prisma.userPersona.findMany({

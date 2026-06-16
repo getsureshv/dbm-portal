@@ -52,6 +52,19 @@ export class AdminUsersController {
     return this.personas.listUsers({ search, role });
   }
 
+  @Get('records')
+  @RequirePermission('read', 'user_access')
+  @ApiOperation({
+    summary:
+      'Selectable records for the Record Access picker (e.g. projects by name/type)',
+  })
+  async listRecords(
+    @Query('entity') entity = 'project',
+    @Query('search') search?: string,
+  ) {
+    return this.personas.listRecords(entity, search);
+  }
+
   @Get(':userId/personas')
   @RequirePermission('read', 'user_access')
   @ApiOperation({ summary: "A user's persona assignments (accepts email or UUID)" })

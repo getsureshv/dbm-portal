@@ -547,6 +547,15 @@ export interface ApiUserListItem {
   }[];
 }
 
+export interface ApiRecordListItem {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  ownerEmail: string | null;
+  ownerName: string | null;
+}
+
 export interface ApiPendingApproval {
   userId: string;
   user: { id: string; email: string; name: string | null };
@@ -684,6 +693,11 @@ export const admin = {
     ),
 
   // Record access
+  listRecords: (entity = 'project', search?: string) => {
+    const qs = new URLSearchParams({ entity });
+    if (search) qs.set('search', search);
+    return request<ApiRecordListItem[]>(`/admin/users/records?${qs.toString()}`);
+  },
   whoCanAccess: (entity: string, recordId: string) => {
     const qs = new URLSearchParams({ entity, recordId }).toString();
     return request<ApiAccessPrincipal[]>(`/admin/record-grants?${qs}`);

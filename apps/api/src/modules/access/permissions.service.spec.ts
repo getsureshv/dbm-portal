@@ -146,6 +146,39 @@ describe('PermissionsService.check (404/403 inputs)', () => {
     expect(findUnique).not.toHaveBeenCalled();
   });
 
+  it('recordless list read (GET /projects) → allowed for OWN persona, no record resolved', async () => {
+    const findUnique = jest.fn();
+    const prisma = mockPrisma({
+      userPersona: { findMany: jest.fn().mockResolvedValue([clientPersonaRow]) },
+      project: { findUnique },
+    });
+    const svc = new PermissionsService(prisma);
+    const { decision, recordMissing } = await svc.check('u1', 'read', 'project');
+    expect(decision.allowed).toBe(true); // collection read passes the guard
+    expect(recordMissing).toBe(false);
+    expect(findUnique).not.toHaveBeenCalled(); // no single record to resolve
+  });
+
+  it('recordless list read → denied when persona lacks the entity permission', async () => {
+    const prisma = mockPrisma({
+      userPersona: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            persona: {
+              id: 'persona-client',
+              slug: 'client',
+              status: 'ACTIVE',
+              permissions: [{ entityKey: 'document', actions: ['read'], scope: 'OWN' }],
+            },
+          },
+        ]),
+      },
+    });
+    const svc = new PermissionsService(prisma);
+    const { decision } = await svc.check('u1', 'read', 'project');
+    expect(decision.allowed).toBe(false);
+  });
+
   it('document owner resolves from its project owner, not uploader', async () => {
     const prisma = mockPrisma({
       userPersona: {

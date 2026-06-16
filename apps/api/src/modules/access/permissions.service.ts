@@ -256,8 +256,20 @@ export class PermissionsService {
   ): Promise<{ decision: Decision; recordMissing: boolean }> {
     const ctx = await this.getContext(userId);
 
-    if (action === 'create' || !recordId) {
+    if (action === 'create') {
       return { decision: decide(ctx, action, entity), recordMissing: false };
+    }
+
+    // No record id on a non-create action == a collection/list check (e.g.
+    // GET /projects). Evaluate as a `collection` read so an OWN/ASSIGNED-scoped
+    // persona is allowed through the guard; row-level visibility is then
+    // enforced by the controller's scopeFilter. (Without this, list endpoints
+    // 404 for every non-ALL persona — the bug this fixes.)
+    if (!recordId) {
+      return {
+        decision: decide(ctx, action, entity, undefined, /* collection */ true),
+        recordMissing: false,
+      };
     }
 
     const record = await this.resolveRecord(entity, recordId);

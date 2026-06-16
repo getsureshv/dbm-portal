@@ -249,3 +249,54 @@ describe('buildScopeFilter (FR-16)', () => {
     expect(buildScopeFilter(c, 'read', 'project').grantedIds).toEqual([]);
   });
 });
+
+// ── collection / list reads (recordless): the guard must allow an OWN/ASSIGNED
+// persona through; buildScopeFilter then narrows the actual rows. Regression
+// guard for the bug where GET /projects 404'd for every non-ALL persona. ──────
+describe('collection reads (no record in play)', () => {
+  const clientCtx = ctx([
+    persona('client', [{ entity: 'project', actions: ['read', 'update'], scope: 'OWN' }]),
+  ]);
+  const assignedCtx = ctx([
+    persona('gc', [{ entity: 'project', actions: ['read'], scope: 'ASSIGNED' }]),
+  ]);
+  const adminCtx = ctx([
+    persona('admin', [{ entity: 'project', actions: ['read'], scope: 'ALL' }]),
+  ]);
+  const noneCtx = ctx([
+    persona('client', [{ entity: 'document', actions: ['read'], scope: 'OWN' }]),
+  ]);
+
+  it('OWN-scoped persona is ALLOWED to read the collection (collection=true)', () => {
+    expect(decide(clientCtx, 'read', 'project', undefined, true).allowed).toBe(true);
+  });
+
+  it('ASSIGNED-scoped persona is ALLOWED to read the collection', () => {
+    expect(decide(assignedCtx, 'read', 'project', undefined, true).allowed).toBe(true);
+  });
+
+  it('ALL-scoped persona is ALLOWED to read the collection', () => {
+    expect(decide(adminCtx, 'read', 'project', undefined, true).allowed).toBe(true);
+  });
+
+  it('persona with NO matching entity permission is DENIED', () => {
+    expect(decide(noneCtx, 'read', 'project', undefined, true).allowed).toBe(false);
+  });
+
+  it('a record grant on the entity unlocks the collection read', () => {
+    const grantOnly = ctx(
+      [persona('viewer', [])],
+      [{ entity: 'project', recordId: 'proj-9', actions: ['read'] }],
+    );
+    expect(decide(grantOnly, 'read', 'project', undefined, true).allowed).toBe(true);
+  });
+
+  it('without collection=true, an OWN persona recordless read still denies (record-level semantics unchanged)', () => {
+    expect(decide(clientCtx, 'read', 'project', undefined, false).allowed).toBe(false);
+  });
+
+  it('record-level checks are unchanged: OWN persona allowed on own record, denied on others', () => {
+    expect(decide(clientCtx, 'read', 'project', myProject).allowed).toBe(true);
+    expect(decide(clientCtx, 'read', 'project', othersProject).allowed).toBe(false);
+  });
+});

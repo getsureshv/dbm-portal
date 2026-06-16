@@ -73,17 +73,28 @@ const scopeReason = (
  * @param record  the record being acted on; omit for `create` (FR-17) or when
  *                evaluating a create-style permission. For reads/writes on a
  *                specific record, pass it so OWN/ASSIGNED can be evaluated.
+ * @param collection  set true for collection/list endpoints (e.g. GET
+ *                /projects) where no single record is in play. The guard's job
+ *                there is only to confirm the principal may read the entity in
+ *                *some* scope; the actual row-level visibility is enforced
+ *                separately by {@link buildScopeFilter}. Without this, an
+ *                OWN/ASSIGNED-scoped persona could never satisfy a recordless
+ *                read and the list endpoint would 404 for every non-ALL user.
  */
 export function decide(
   ctx: PrincipalContext,
   action: string,
   entity: string,
   record?: RecordContext,
+  collection = false,
 ): Decision {
   const isCreate = action === 'create';
 
   // Step 2 — persona permission match.
   // For `create`, scope is ignored (FR-17): a matching action is enough.
+  // For a `collection` read, scope is also not evaluated here (no record to
+  // evaluate against) — any matching (entity, action) at ANY scope is enough
+  // to pass the guard; buildScopeFilter then narrows the rows the caller sees.
   for (const persona of ctx.personas) {
     for (const perm of persona.permissions) {
       if (perm.entity !== entity) continue;
@@ -92,17 +103,28 @@ export function decide(
       if (isCreate) {
         return { allowed: true, reason: 'create-action', via: persona.slug };
       }
+      if (collection) {
+        return { allowed: true, reason: scopeReason(perm.scope), via: persona.slug };
+      }
       if (scopeSatisfied(perm.scope, ctx.userId, record)) {
         return { allowed: true, reason: scopeReason(perm.scope), via: persona.slug };
       }
     }
   }
 
-  // Step 3 — record grant match (only meaningful when a record is in play).
+  // Step 3 — record grant match. Meaningful when a concrete record is in play,
+  // or for a collection read where ANY grant on this entity unlocks the list
+  // (buildScopeFilter restricts the visible rows to the granted ids).
   if (!isCreate && record) {
     for (const grant of ctx.grants) {
       if (grant.entity !== entity) continue;
       if (grant.recordId !== record.id) continue;
+      if (!has(grant.actions, action)) continue;
+      return { allowed: true, reason: 'record-grant', via: `grant:${grant.recordId}` };
+    }
+  } else if (!isCreate && collection) {
+    for (const grant of ctx.grants) {
+      if (grant.entity !== entity) continue;
       if (!has(grant.actions, action)) continue;
       return { allowed: true, reason: 'record-grant', via: `grant:${grant.recordId}` };
     }

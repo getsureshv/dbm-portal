@@ -37,18 +37,22 @@ export interface WebSearchResult {
   message?: string;
 }
 
-export type WebSearchProviderName =
+/** Concrete providers that actually hit an external service. */
+export type ConcreteProviderName =
   | 'overpass'
   | 'foursquare'
   | 'yelp'
   | 'serpapi'
   | 'google-places';
 
+/** All provider names, including the synthetic 'merge' aggregator. */
+export type WebSearchProviderName = ConcreteProviderName | 'merge';
+
 /**
  * Provider contract — implement once per external service and register below.
  */
 interface WebSearchProvider {
-  readonly name: WebSearchProviderName;
+  readonly name: ConcreteProviderName;
   isConfigured(): boolean;
   search(params: WebSearchParams): Promise<WebVendor[]>;
 }
@@ -481,18 +485,137 @@ class SerpApiProvider implements WebSearchProvider {
 
 class GooglePlacesProvider implements WebSearchProvider {
   readonly name = 'google-places' as const;
+  private readonly logger = new Logger('GooglePlacesProvider');
   private readonly apiKey = process.env.GOOGLE_PLACES_API_KEY || '';
 
   isConfigured(): boolean {
     return !!this.apiKey;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async search(_params: WebSearchParams): Promise<WebVendor[]> {
-    // TODO: hit https://places.googleapis.com/v1/places:searchText
-    // with X-Goog-Api-Key header, map results into WebVendor[].
-    return [];
+  async search(params: WebSearchParams): Promise<WebVendor[]> {
+    if (!this.isConfigured() || !params.zip) return [];
+
+    // Build a natural-language text query. The trade/category and ZIP are folded
+    // into the query string; Places Text Search (New) handles the geocoding.
+    const trade = this.queryForCategory(params.category);
+    const keyword = params.query?.trim();
+    const textQuery = [keyword || trade, `near ${params.zip}`]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+
+    // Field mask is REQUIRED by Places API (New) and controls billing tier.
+    const fieldMask = [
+      'places.id',
+      'places.displayName',
+      'places.formattedAddress',
+      'places.addressComponents',
+      'places.rating',
+      'places.userRatingCount',
+      'places.nationalPhoneNumber',
+      'places.internationalPhoneNumber',
+      'places.websiteUri',
+      'places.googleMapsUri',
+      'places.types',
+      'places.location',
+    ].join(',');
+
+    try {
+      const res = await fetch(
+        'https://places.googleapis.com/v1/places:searchText',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': this.apiKey,
+            'X-Goog-FieldMask': fieldMask,
+          },
+          body: JSON.stringify({
+            textQuery,
+            regionCode: 'US',
+            maxResultCount: Math.min(params.limit ?? 10, 20),
+          }),
+        },
+      );
+
+      if (!res.ok) {
+        this.logger.warn(
+          `Google Places returned ${res.status}: ${await res.text()}`,
+        );
+        return [];
+      }
+
+      const data = (await res.json()) as { places?: GooglePlace[] };
+      return (data.places ?? []).map((p) => this.normalize(p));
+    } catch (err) {
+      this.logger.error(
+        `Google Places search failed: ${(err as Error).message}`,
+      );
+      return [];
+    }
   }
+
+  /** Map our trade slug → a Google-friendly search phrase. */
+  private queryForCategory(category?: string): string {
+    const map: Record<string, string> = {
+      electrician: 'electrician',
+      plumber: 'plumber',
+      roofer: 'roofing contractor',
+      painter: 'painting contractor',
+      carpenter: 'carpenter',
+      hvac: 'HVAC contractor',
+      'general-contractor': 'general contractor',
+      architect: 'architect',
+      flooring: 'flooring contractor',
+      concrete: 'concrete contractor',
+      landscape: 'landscaping contractor',
+      cabinets: 'cabinet maker',
+    };
+    return map[category ?? ''] ?? 'construction contractor';
+  }
+
+  private normalize(p: GooglePlace): WebVendor {
+    const comp = (type: string): string | null =>
+      p.addressComponents?.find((c) => c.types?.includes(type))?.shortText ??
+      p.addressComponents?.find((c) => c.types?.includes(type))?.longText ??
+      null;
+    return {
+      id: `gplaces:${p.id}`,
+      name: p.displayName?.text ?? 'Unknown',
+      rating: typeof p.rating === 'number' ? p.rating : null,
+      reviewCount: p.userRatingCount ?? 0,
+      phone: p.nationalPhoneNumber || p.internationalPhoneNumber || null,
+      website: p.websiteUri || p.googleMapsUri || null,
+      address: p.formattedAddress || null,
+      city: comp('locality') ?? comp('postal_town') ?? null,
+      state: comp('administrative_area_level_1') ?? null,
+      zip: comp('postal_code') ?? null,
+      distanceMiles: null, // Places Text Search does not return distance
+      categories: (p.types ?? []).map((t) => t.replace(/_/g, ' ')),
+      imageUrl: null,
+      source: 'google-places',
+      sourceLabel: 'Google',
+    };
+  }
+}
+
+interface GooglePlace {
+  id: string;
+  displayName?: { text?: string; languageCode?: string };
+  formattedAddress?: string;
+  addressComponents?: {
+    longText?: string;
+    shortText?: string;
+    types?: string[];
+  }[];
+  rating?: number;
+  userRatingCount?: number;
+  nationalPhoneNumber?: string;
+  internationalPhoneNumber?: string;
+  websiteUri?: string;
+  googleMapsUri?: string;
+  types?: string[];
+  location?: { latitude?: number; longitude?: number };
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
@@ -502,7 +625,7 @@ class GooglePlacesProvider implements WebSearchProvider {
 @Injectable()
 export class WebSearchService {
   private readonly logger = new Logger(WebSearchService.name);
-  private readonly providers: Record<WebSearchProviderName, WebSearchProvider> =
+  private readonly providers: Record<ConcreteProviderName, WebSearchProvider> =
     {
       overpass: new OverpassProvider(),
       foursquare: new FoursquareProvider(),
@@ -514,11 +637,42 @@ export class WebSearchService {
   /** Resolve which provider to use based on env, defaulting to overpass (free, no key). */
   private resolveProvider(): WebSearchProvider {
     const requested = (process.env.WEB_SEARCH_PROVIDER ||
-      'overpass') as WebSearchProviderName;
+      'overpass') as ConcreteProviderName;
     return this.providers[requested] ?? this.providers.overpass;
   }
 
+  /**
+   * Merge mode is enabled when WEB_SEARCH_PROVIDER=merge (or =all). It runs every
+   * configured provider in parallel and combines their results. An explicit
+   * allow-list can be supplied via WEB_SEARCH_MERGE (comma-separated provider
+   * names); otherwise every provider that reports isConfigured() participates.
+   */
+  private isMergeMode(): boolean {
+    const v = (process.env.WEB_SEARCH_PROVIDER || '').toLowerCase();
+    return v === 'merge' || v === 'all';
+  }
+
+  private mergeProviders(): WebSearchProvider[] {
+    const allowList = (process.env.WEB_SEARCH_MERGE || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean) as ConcreteProviderName[];
+
+    const candidates = allowList.length
+      ? allowList.map((n) => this.providers[n]).filter(Boolean)
+      : Object.values(this.providers);
+
+    const configured = candidates.filter((p) => p.isConfigured());
+    // Overpass is always configured (no key) — guarantees a free fallback so a
+    // merge search is never empty just because the paid keys are missing.
+    return configured.length ? configured : [this.providers.overpass];
+  }
+
   async search(params: WebSearchParams): Promise<WebSearchResult> {
+    if (this.isMergeMode()) {
+      return this.searchMerged(params);
+    }
+
     const provider = this.resolveProvider();
 
     if (!provider.isConfigured()) {
@@ -539,6 +693,76 @@ export class WebSearchService {
       provider: provider.name,
       configured: true,
     };
+  }
+
+  /** Run every configured provider in parallel, then dedupe + sort the union. */
+  private async searchMerged(
+    params: WebSearchParams,
+  ): Promise<WebSearchResult> {
+    const providers = this.mergeProviders();
+    const settled = await Promise.allSettled(
+      providers.map((p) => p.search(params)),
+    );
+
+    const all: WebVendor[] = [];
+    for (let i = 0; i < settled.length; i++) {
+      const r = settled[i];
+      if (r.status === 'fulfilled') {
+        all.push(...r.value);
+      } else {
+        this.logger.warn(
+          `Provider "${providers[i].name}" failed in merge: ${String(r.reason)}`,
+        );
+      }
+    }
+
+    const vendors = this.dedupe(all);
+    return {
+      vendors,
+      provider: 'merge',
+      configured: true,
+    };
+  }
+
+  /**
+   * Dedupe vendors that the same business produces across providers. We key on
+   * a normalized (name + zip) signature, then on a normalized phone number.
+   * When duplicates collide we keep the richer record (prefers one with a
+   * rating, then more reviews, then a distance, then a website).
+   */
+  private dedupe(vendors: WebVendor[]): WebVendor[] {
+    const norm = (s: string | null) =>
+      (s ?? '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '')
+        .trim();
+    const phoneKey = (s: string | null) => (s ?? '').replace(/\D/g, '');
+
+    const byKey = new Map<string, WebVendor>();
+    const score = (v: WebVendor) =>
+      (v.rating != null ? 1000 : 0) +
+      v.reviewCount +
+      (v.distanceMiles != null ? 1 : 0) +
+      (v.website ? 1 : 0);
+
+    for (const v of vendors) {
+      const phone = phoneKey(v.phone);
+      const key = phone
+        ? `tel:${phone}`
+        : `nm:${norm(v.name)}|${norm(v.zip)}`;
+      const existing = byKey.get(key);
+      if (!existing || score(v) > score(existing)) {
+        byKey.set(key, v);
+      }
+    }
+
+    return Array.from(byKey.values()).sort((a, b) => {
+      // Sort by distance when available, then by rating desc.
+      const da = a.distanceMiles ?? Infinity;
+      const db = b.distanceMiles ?? Infinity;
+      if (da !== db) return da - db;
+      return (b.rating ?? 0) - (a.rating ?? 0);
+    });
   }
 }
 

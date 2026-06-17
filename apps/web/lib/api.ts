@@ -184,7 +184,39 @@ export const projects = {
     request<{ downloadUrl: string; pdfS3Key: string }>(`/projects/${projectId}/scope/generate-pdf`, {
       method: 'POST',
     }),
+
+  // ── Owner self-service access sharing ──────────────────────────────
+  listGrants: (projectId: string) =>
+    request<ProjectGrant[]>(`/projects/${projectId}/grants`),
+
+  grantAccess: (
+    projectId: string,
+    data: { email: string; actions?: Array<'read' | 'update'>; reason?: string; expiresAt?: string },
+  ) =>
+    request<{ grant: { id: string }; invited: boolean }>(`/projects/${projectId}/grants`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  revokeAccess: (projectId: string, grantId: string) =>
+    request<{ id: string; status: string }>(
+      `/projects/${projectId}/grants/${grantId}/revoke`,
+      { method: 'POST' },
+    ),
 };
+
+export interface ProjectGrant {
+  id: string;
+  granteeId: string;
+  granteeEmail: string | null;
+  granteeName: string | null;
+  pendingInvite: boolean;
+  actions: string[];
+  reason: string | null;
+  status: string;
+  expiresAt: string | null;
+  grantedAt: string;
+}
 
 // ─── Uploads ──────────────────────────────────────────────
 

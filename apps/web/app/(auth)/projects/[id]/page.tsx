@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronRight, ChevronDown, Loader2, AlertCircle, Pencil, ScanLine, Eye, X, Check, Wand2, Trash2 } from 'lucide-react';
+import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronRight, ChevronDown, Loader2, AlertCircle, Pencil, ScanLine, Eye, X, Check, Wand2, Trash2, UserPlus, Mail, Clock } from 'lucide-react';
 import { useAuth } from '../../../../lib/auth-context';
-import { projects as projectsApi, uploads as uploadsApi, documents as documentsApi, ApiProject, ApiDocument } from '../../../../lib/api';
+import { projects as projectsApi, uploads as uploadsApi, documents as documentsApi, ApiProject, ApiDocument, ProjectGrant } from '../../../../lib/api';
 
 type TabType = 'overview' | 'documents' | 'scope' | 'team';
 
@@ -477,6 +477,284 @@ function DocumentsTab({ project, onProjectUpdate }: { project: ApiProject; onPro
   );
 }
 
+// ─── Team / Sharing Tab ─────────────────────────────────────
+
+function TeamTab({ project }: { project: ApiProject }) {
+  const { user } = useAuth();
+  const [grants, setGrants] = useState<ProjectGrant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // invite form state
+  const [email, setEmail] = useState('');
+  const [canEdit, setCanEdit] = useState(true); // read always; update optional
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+
+  const ownerCanManage = !!user && user.id === project.ownerId;
+
+  const load = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const list = await projectsApi.listGrants(project.id);
+      setGrants(list.filter((g) => g.status === 'ACTIVE'));
+    } catch (err: any) {
+      setLoadError(err.message || 'Failed to load access list');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id]);
+
+  const handleGrant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+    setNotice(null);
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !trimmed.includes('@')) {
+      setFormError('Enter a valid email address');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await projectsApi.grantAccess(project.id, {
+        email: trimmed,
+        actions: canEdit ? ['read', 'update'] : ['read'],
+      });
+      setEmail('');
+      setCanEdit(true);
+      setNotice(
+        res.invited
+          ? `Invitation sent to ${trimmed} — they'll get access when they sign in.`
+          : `${trimmed} now has access to this project.`,
+      );
+      await load();
+    } catch (err: any) {
+      setFormError(err.message || 'Could not grant access');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRevoke = async (grant: ProjectGrant) => {
+    setRevokingId(grant.id);
+    setFormError(null);
+    setNotice(null);
+    try {
+      await projectsApi.revokeAccess(project.id, grant.id);
+      await load();
+    } catch (err: any) {
+      setFormError(err.message || 'Could not revoke access');
+    } finally {
+      setRevokingId(null);
+    }
+  };
+
+  const initials = (name?: string | null, fallback?: string | null) => {
+    const base = name || fallback || '?';
+    return base
+      .split(/[\s@.]+/)
+      .filter(Boolean)
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Owner card */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
+        <h2 className="text-xl font-bold text-gray-900 mb-6">People with access</h2>
+        <div className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center">
+              <span className="text-amber-600 font-semibold text-sm">
+                {initials(user?.name, user?.email)}
+              </span>
+            </div>
+            <div>
+              <p className="font-medium text-gray-900">{user?.name || 'Project owner'}</p>
+              <p className="text-xs text-gray-500">{user?.email}</p>
+            </div>
+          </div>
+          <span className="text-xs text-amber-600 font-medium px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-full">
+            Owner
+          </span>
+        </div>
+
+        {/* Shared grants */}
+        {loading ? (
+          <div className="flex items-center gap-2 text-gray-400 text-sm mt-4 px-1">
+            <Loader2 size={16} className="animate-spin" /> Loading shared access...
+          </div>
+        ) : loadError ? (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-600 text-sm">
+            <AlertCircle size={16} /> {loadError}
+          </div>
+        ) : grants.length > 0 ? (
+          <div className="mt-3 space-y-3">
+            {grants.map((g) => (
+              <div
+                key={g.id}
+                className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-gray-300 transition-colors"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center flex-shrink-0">
+                    <span className="text-gray-600 font-semibold text-sm">
+                      {initials(g.granteeName, g.granteeEmail)}
+                    </span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900 truncate">
+                      {g.granteeName || g.granteeEmail || 'Unknown user'}
+                    </p>
+                    <div className="flex items-center flex-wrap gap-1.5 mt-0.5">
+                      {g.granteeName && g.granteeEmail && (
+                        <span className="text-xs text-gray-500 truncate">{g.granteeEmail}</span>
+                      )}
+                      {g.pendingInvite && (
+                        <span className="inline-flex items-center gap-1 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">
+                          <Clock size={10} /> Pending invite
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <span className="text-xs font-medium text-gray-600 px-2.5 py-1 bg-gray-50 border border-gray-200 rounded-full">
+                    {g.actions.includes('update') ? 'Can edit' : 'Can view'}
+                  </span>
+                  {ownerCanManage && (
+                    <button
+                      onClick={() => handleRevoke(g)}
+                      disabled={revokingId === g.id}
+                      className="flex items-center justify-center w-8 h-8 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                      title="Remove access"
+                      aria-label="Remove access"
+                    >
+                      {revokingId === g.id ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={14} />
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400 mt-4 px-1">
+            Only you have access. Share this project below.
+          </p>
+        )}
+      </div>
+
+      {/* Invite form — owner only */}
+      {ownerCanManage && (
+        <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <UserPlus className="text-amber-600" size={20} />
+            <h2 className="text-xl font-bold text-gray-900">Share this project</h2>
+          </div>
+          <p className="text-sm text-gray-500 mb-5">
+            Give another person access by email. If they don&apos;t have an account yet,
+            they&apos;ll be invited and get access on their first sign-in.
+          </p>
+
+          {notice && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700 text-sm">
+              <Check size={16} /> {notice}
+              <button onClick={() => setNotice(null)} className="ml-auto text-green-500 hover:text-green-700">
+                <X size={14} />
+              </button>
+            </div>
+          )}
+          {formError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-600 text-sm">
+              <AlertCircle size={16} /> {formError}
+              <button onClick={() => setFormError(null)} className="ml-auto text-red-400 hover:text-red-600">
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          <form onSubmit={handleGrant} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email address</label>
+              <div className="relative">
+                <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@example.com"
+                  disabled={submitting}
+                  className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400 disabled:opacity-50"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Access level</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCanEdit(false)}
+                  className={`flex-1 px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                    !canEdit
+                      ? 'bg-amber-50 border-amber-300 text-amber-700'
+                      : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
+                  }`}
+                >
+                  Can view
+                  <span className="block text-xs font-normal text-gray-400 mt-0.5">Read only</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCanEdit(true)}
+                  className={`flex-1 px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                    canEdit
+                      ? 'bg-amber-50 border-amber-300 text-amber-700'
+                      : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
+                  }`}
+                >
+                  Can edit
+                  <span className="block text-xs font-normal text-gray-400 mt-0.5">Read &amp; update</span>
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={submitting || !email.trim()}
+              className="inline-flex items-center gap-2 bg-amber-500 text-white font-semibold px-5 py-2.5 rounded-lg hover:bg-amber-600 transition-colors text-sm disabled:opacity-50"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" /> Sharing...
+                </>
+              ) : (
+                <>
+                  <UserPlus size={16} /> Grant access
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ─────────────────────────────────────────
 
 export default function ProjectDetailPage({ params }: { params: { id: string } }) {
@@ -499,7 +777,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
     { id: 'overview', label: 'Overview', icon: BookOpen },
     { id: 'documents', label: 'Documents', icon: FileText },
     { id: 'scope', label: 'Scope', icon: BookOpen },
-    { id: 'team', label: 'Team', icon: Users },
+    { id: 'team', label: 'Sharing', icon: Users },
   ] as const;
 
   if (loading) {
@@ -847,29 +1125,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         </div>
       )}
 
-      {activeTab === 'team' && (
-        <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
-          <h2 className="text-xl font-bold text-gray-900 mb-6">Team Members</h2>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center">
-                  <span className="text-amber-600 font-semibold text-sm">
-                    {user?.name
-                      ? user.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)
-                      : '?'}
-                  </span>
-                </div>
-                <div>
-                  <p className="font-medium text-gray-900">{user?.name || 'Unknown'}</p>
-                  <p className="text-xs text-gray-500">{user?.email}</p>
-                </div>
-              </div>
-              <span className="text-xs text-amber-600 font-medium">Owner</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {activeTab === 'team' && <TeamTab project={project} />}
     </div>
   );
 }

@@ -32,13 +32,39 @@ export class ProjectsService {
   }
 
   async createProject(userId: string, createProjectDto: CreateProjectDto) {
-    const { title, type, zipCode } = createProjectDto;
+    const {
+      title,
+      type,
+      zipCode,
+      addressStreet,
+      addressCity,
+      addressState,
+      companies,
+    } = createProjectDto;
+
+    // Keep only company rows that have at least a company name.
+    const companyRows = (companies ?? [])
+      .filter((c) => c.companyName && c.companyName.trim())
+      .map((c) => ({
+        companyName: c.companyName.trim(),
+        companyWebsite: c.companyWebsite?.trim() || null,
+        companyPhone: c.companyPhone?.trim() || null,
+        contactFirstName: c.contactFirstName?.trim() || null,
+        contactLastName: c.contactLastName?.trim() || null,
+        contactTitle: c.contactTitle?.trim() || null,
+        contactEmail: c.contactEmail?.trim() || null,
+        contactPhone: c.contactPhone?.trim() || null,
+        roleInProject: c.roleInProject?.trim() || null,
+      }));
 
     const project = await this.prisma.project.create({
       data: {
         title,
         type,
         zipCode,
+        addressStreet: addressStreet?.trim() || null,
+        addressCity: addressCity?.trim() || null,
+        addressState: addressState?.trim() || null,
         ownerId: userId,
         status: 'DISCOVERY',
         scopeCreationMode: 'AI_ASSISTED',
@@ -48,10 +74,14 @@ export class ProjectsService {
             completenessPercent: 0,
           },
         },
+        ...(companyRows.length
+          ? { companies: { create: companyRows } }
+          : {}),
       },
       include: {
         documents: true,
         scopeDocument: true,
+        companies: true,
       },
     });
 
@@ -208,6 +238,7 @@ export class ProjectsService {
       include: {
         documents: true,
         scopeDocument: true,
+        companies: { orderBy: { createdAt: 'asc' } },
       },
     });
 

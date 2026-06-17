@@ -70,6 +70,35 @@ export interface ApiUser {
   verificationStatus: boolean | null;
 }
 
+export interface ApiProjectCompany {
+  id: string;
+  projectId: string;
+  companyName: string;
+  companyWebsite: string | null;
+  companyPhone: string | null;
+  contactFirstName: string | null;
+  contactLastName: string | null;
+  contactTitle: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  roleInProject: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Payload for a single company/contact entry when creating a project.
+export interface ProjectCompanyInput {
+  companyName: string;
+  companyWebsite?: string;
+  companyPhone?: string;
+  contactFirstName?: string;
+  contactLastName?: string;
+  contactTitle?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  roleInProject?: string;
+}
+
 export interface ApiProject {
   id: string;
   title: string;
@@ -77,6 +106,9 @@ export interface ApiProject {
   status: 'DISCOVERY' | 'BIDDING' | 'CONTRACTING' | 'EXECUTION' | 'CLOSING' | 'ARCHIVED';
   zipCode: string;
   description: string | null;
+  addressStreet: string | null;
+  addressCity: string | null;
+  addressState: string | null;
   scopeCreationMode: 'AI_ASSISTED' | 'MANUAL_UPLOAD';
   ownerId: string;
   deletedAt: string | null;
@@ -84,6 +116,7 @@ export interface ApiProject {
   updatedAt: string;
   documents: ApiDocument[];
   scopeDocument: ApiScopeDocument | null;
+  companies?: ApiProjectCompany[];
 }
 
 export interface ApiDocument {
@@ -163,7 +196,16 @@ export const onboarding = {
 // ─── Projects ──────────────────────────────────────────────
 
 export const projects = {
-  create: (data: { title: string; type: string; zipCode: string; description?: string }) =>
+  create: (data: {
+    title: string;
+    type: string;
+    zipCode: string;
+    description?: string;
+    addressStreet?: string;
+    addressCity?: string;
+    addressState?: string;
+    companies?: ProjectCompanyInput[];
+  }) =>
     request<ApiProject>('/projects', { method: 'POST', body: JSON.stringify(data) }),
 
   list: () => request<ApiProject[]>('/projects'),

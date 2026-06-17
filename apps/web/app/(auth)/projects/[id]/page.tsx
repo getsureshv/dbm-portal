@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronRight, ChevronDown, Loader2, AlertCircle, Pencil, ScanLine, Eye, X, Check, Wand2, Trash2, UserPlus, Mail, Clock } from 'lucide-react';
+import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronRight, ChevronDown, Loader2, AlertCircle, Pencil, ScanLine, Eye, X, Check, Wand2, Trash2, UserPlus, Mail, Clock, Building2, Globe, Phone } from 'lucide-react';
 import { useAuth } from '../../../../lib/auth-context';
 import { projects as projectsApi, uploads as uploadsApi, documents as documentsApi, ApiProject, ApiDocument, ProjectGrant } from '../../../../lib/api';
 
@@ -875,9 +875,19 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
               <div className="space-y-4">
                 <div>
                   <p className="text-gray-500 text-sm mb-1">Location</p>
-                  <div className="flex items-center gap-2 text-gray-900">
-                    <MapPin size={16} />
-                    <span>{project.zipCode}</span>
+                  <div className="flex items-start gap-2 text-gray-900">
+                    <MapPin size={16} className="mt-0.5 flex-shrink-0" />
+                    <span>
+                      {[
+                        project.addressStreet,
+                        [project.addressCity, project.addressState]
+                          .filter(Boolean)
+                          .join(', '),
+                        project.zipCode,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
                   </div>
                 </div>
                 <div>
@@ -894,6 +904,111 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
               <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">Description</h2>
                 <p className="text-gray-700 leading-relaxed">{project.description}</p>
+              </div>
+            )}
+
+            {/* Companies & Contacts */}
+            {project.companies && project.companies.length > 0 && (
+              <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
+                <div className="flex items-center gap-2 mb-5">
+                  <Building2 size={20} className="text-amber-500" />
+                  <h2 className="text-xl font-bold text-gray-900">
+                    Companies &amp; Contacts
+                  </h2>
+                  <span className="text-sm text-gray-400">
+                    ({project.companies.length})
+                  </span>
+                </div>
+                <div className="space-y-4">
+                  {project.companies.map((company) => {
+                    const contactName = [
+                      company.contactFirstName,
+                      company.contactLastName,
+                    ]
+                      .filter(Boolean)
+                      .join(' ');
+                    return (
+                      <div
+                        key={company.id}
+                        className="border border-gray-200 rounded-xl p-5"
+                      >
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div>
+                            <p className="font-semibold text-gray-900">
+                              {company.companyName}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm text-gray-500">
+                              {company.companyWebsite && (
+                                <a
+                                  href={
+                                    company.companyWebsite.startsWith('http')
+                                      ? company.companyWebsite
+                                      : `https://${company.companyWebsite}`
+                                  }
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-amber-600 hover:underline"
+                                >
+                                  <Globe size={13} />
+                                  {company.companyWebsite}
+                                </a>
+                              )}
+                              {company.companyPhone && (
+                                <span className="inline-flex items-center gap-1">
+                                  <Phone size={13} />
+                                  {company.companyPhone}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {company.roleInProject && (
+                            <span className="flex-shrink-0 inline-flex items-center rounded-full bg-amber-50 border border-amber-200 px-2.5 py-1 text-xs font-medium text-amber-700">
+                              {company.roleInProject}
+                            </span>
+                          )}
+                        </div>
+
+                        {(contactName ||
+                          company.contactTitle ||
+                          company.contactEmail ||
+                          company.contactPhone) && (
+                          <div className="pt-3 border-t border-gray-100">
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                              Contact
+                            </p>
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-gray-700">
+                              {contactName && (
+                                <span className="font-medium text-gray-900">
+                                  {contactName}
+                                </span>
+                              )}
+                              {company.contactTitle && (
+                                <span className="text-gray-500">
+                                  {company.contactTitle}
+                                </span>
+                              )}
+                              {company.contactEmail && (
+                                <a
+                                  href={`mailto:${company.contactEmail}`}
+                                  className="inline-flex items-center gap-1 text-amber-600 hover:underline"
+                                >
+                                  <Mail size={13} />
+                                  {company.contactEmail}
+                                </a>
+                              )}
+                              {company.contactPhone && (
+                                <span className="inline-flex items-center gap-1">
+                                  <Phone size={13} />
+                                  {company.contactPhone}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 

@@ -292,6 +292,10 @@ model Project {
   status            ProjectStatus     @default(DISCOVERY)
   zipCode           String            @map("zip_code")
   description       String?
+  // Optional project site address (ZIP lives in zipCode above).
+  addressStreet     String?           @map("address_street")
+  addressCity       String?           @map("address_city")
+  addressState      String?           @map("address_state")
   scopeCreationMode ScopeCreationMode @default(AI_ASSISTED) @map("scope_creation_mode")
   deletedAt         DateTime?         @map("deleted_at")
   createdAt         DateTime          @default(now()) @map("created_at")
@@ -300,6 +304,7 @@ model Project {
   // Relations
   owner           User              @relation(fields: [ownerId], references: [id])
   documents       ProjectDocument[]
+  companies       ProjectCompany[]
   scopeDocument   ScopeDocument?
   // Phase 5+ stubs
   invoices        Invoice[]
@@ -316,6 +321,36 @@ model Project {
   // Keyset pagination order for the admin record picker (FR record-search).
   @@index([createdAt, id])
   @@map("projects")
+}
+
+// A company associated with a project, together with its primary contact
+// person and that person's role in the project. A project can have many.
+model ProjectCompany {
+  id              String   @id @default(uuid()) @db.Uuid
+  projectId       String   @map("project_id") @db.Uuid
+
+  // Company details
+  companyName     String   @map("company_name")
+  companyWebsite  String?  @map("company_website")
+  companyPhone    String?  @map("company_phone")
+
+  // Contact person details
+  contactFirstName String? @map("contact_first_name")
+  contactLastName  String? @map("contact_last_name")
+  contactTitle     String? @map("contact_title")
+  contactEmail     String? @map("contact_email")
+  contactPhone     String? @map("contact_phone")
+
+  // Role of this person/company in the project (e.g. General Contractor, Owner)
+  roleInProject    String? @map("role_in_project")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("project_companies")
 }
 
 model ProjectDocument {

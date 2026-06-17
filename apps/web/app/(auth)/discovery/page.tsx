@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Globe,
   ExternalLink,
+  MapPinned,
 } from 'lucide-react';
 import { discovery, ApiVendor, ApiWebVendor } from '../../../lib/api';
 import { getTradeImage } from '../../../lib/trade-images';
@@ -219,8 +220,47 @@ function ProviderCard({ vendor, onClick }: { vendor: ApiVendor; onClick: () => v
 }
 
 // External web vendor card — visually distinct (lighter chrome, "external" badge)
+// Color-code the source badge so richer Google results are visually distinct
+// from free OpenStreetMap (Overpass) results.
+function getSourceBadge(source: string | null, sourceLabel: string) {
+  switch (source) {
+    case 'google-places':
+      return {
+        label: sourceLabel || 'Google',
+        className: 'bg-blue-50 border-blue-200 text-blue-700',
+        Icon: Globe,
+      };
+    case 'overpass':
+      return {
+        label: sourceLabel || 'OpenStreetMap',
+        className: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+        Icon: MapPinned,
+      };
+    case 'foursquare':
+      return {
+        label: sourceLabel || 'Foursquare',
+        className: 'bg-pink-50 border-pink-200 text-pink-700',
+        Icon: Globe,
+      };
+    case 'yelp':
+      return {
+        label: sourceLabel || 'Yelp',
+        className: 'bg-red-50 border-red-200 text-red-700',
+        Icon: Globe,
+      };
+    default:
+      return {
+        label: sourceLabel || 'Web',
+        className: 'bg-gray-100 border-gray-200 text-gray-600',
+        Icon: Globe,
+      };
+  }
+}
+
 function WebVendorCard({ vendor }: { vendor: ApiWebVendor }) {
   const initials = getInitials(vendor.name);
+  const badge = getSourceBadge(vendor.source, vendor.sourceLabel);
+  const BadgeIcon = badge.Icon;
   return (
     <a
       href={vendor.website || '#'}
@@ -254,9 +294,9 @@ function WebVendorCard({ vendor }: { vendor: ApiWebVendor }) {
             <h3 className="text-lg font-semibold text-gray-900 group-hover:text-amber-600 transition-colors">
               {vendor.name}
             </h3>
-            <span className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 border border-gray-200 rounded-full text-xs font-medium text-gray-600">
-              <Globe size={11} />
-              {vendor.sourceLabel}
+            <span className={`flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 border rounded-full text-xs font-medium ${badge.className}`}>
+              <BadgeIcon size={11} />
+              {badge.label}
             </span>
           </div>
 

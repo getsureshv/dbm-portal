@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
+import { PermissionsService } from '../access/permissions.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import {
@@ -19,7 +20,10 @@ const UUID_REGEX =
 
 @Injectable()
 export class ProjectsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private permissions: PermissionsService,
+  ) {}
 
   private validateUuid(id: string) {
     if (!UUID_REGEX.test(id)) {
@@ -179,7 +183,25 @@ export class ProjectsService {
     return project;
   }
 
-  async getProject(id: string, userId: string) {
+  /**
+   * Fetch a single project, honoring the central access model.
+   *
+   * Historically this enforced `project.ownerId === userId`, which silently
+   * ignored record grants and admin scope — so a user the owner had explicitly
+   * shared the project with (or an admin) was wrongly told "Not authorized".
+   * The PermissionGuard on the route is the authoritative gate (read@project:
+   * owner via OWN, grantee via record-grant, admin via ALL), but this method is
+   * also called directly by mutation paths (update/delete/addDocument), so we
+   * re-check here through the same engine rather than a bare owner comparison.
+   *
+   * @param requiredAction the action to authorize for (default 'read'). Mutation
+   *   callers pass 'update'/'delete' so a read-only grantee can't slip through.
+   */
+  async getProject(
+    id: string,
+    userId: string,
+    requiredAction: 'read' | 'update' | 'delete' = 'read',
+  ) {
     this.validateUuid(id);
     const project = await this.prisma.project.findUnique({
       where: { id },
@@ -193,7 +215,14 @@ export class ProjectsService {
       throw new NotFoundException('Project not found');
     }
 
-    if (project.ownerId !== userId) {
+    // Authorize against personas + record grants + admin scope — not ownerId
+    // alone. participantIds is empty until a participation model exists.
+    const allowed = await this.permissions.can(userId, requiredAction, 'project', {
+      id: project.id,
+      ownerId: project.ownerId,
+      participantIds: [],
+    });
+    if (!allowed) {
       throw new ForbiddenException('Not authorized to access this project');
     }
 
@@ -205,7 +234,7 @@ export class ProjectsService {
     userId: string,
     updateProjectDto: UpdateProjectDto,
   ) {
-    const project = await this.getProject(id, userId);
+    const project = await this.getProject(id, userId, 'update');
 
     if (!project) {
       throw new NotFoundException('Project not found');
@@ -222,7 +251,7 @@ export class ProjectsService {
   }
 
   async deleteProject(id: string, userId: string) {
-    const project = await this.getProject(id, userId);
+    const project = await this.getProject(id, userId, 'delete');
 
     if (!project) {
       throw new NotFoundException('Project not found');
@@ -245,7 +274,8 @@ export class ProjectsService {
     filename: string,
     category: string,
   ) {
-    const project = await this.getProject(id, userId);
+    // Adding a document mutates the project, so require update access.
+    const project = await this.getProject(id, userId, 'update');
 
     if (!project) {
       throw new NotFoundException('Project not found');

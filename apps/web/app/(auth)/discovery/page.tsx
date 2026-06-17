@@ -354,6 +354,7 @@ export default function DiscoveryPage() {
   const [webConfigured, setWebConfigured] = useState<boolean | null>(null);
   const [webMessage, setWebMessage] = useState<string | undefined>();
   const [webProvider, setWebProvider] = useState<string | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<string>(''); // '' = all sources
 
   const performSearch = useCallback(async () => {
     setLoading(true);
@@ -373,6 +374,7 @@ export default function DiscoveryPage() {
           setWebConfigured(res.configured);
           setWebMessage(res.message);
           setWebProvider(res.provider);
+          setSourceFilter(''); // reset source filter on each new search
         })
         .catch(() => {
           setWebVendors([]);
@@ -891,11 +893,75 @@ export default function DiscoveryPage() {
                         No external matches found for this ZIP.
                       </div>
                     ) : (
-                      <div className="space-y-4">
-                        {webVendors.map((v) => (
-                          <WebVendorCard key={v.id} vendor={v} />
-                        ))}
-                      </div>
+                      (() => {
+                        // Build the set of sources present, in stable order, for the legend/filter.
+                        const sourceOrder = [
+                          'google-places',
+                          'overpass',
+                          'foursquare',
+                          'yelp',
+                          'serpapi',
+                        ];
+                        const counts = webVendors.reduce<Record<string, number>>(
+                          (acc, v) => {
+                            acc[v.source] = (acc[v.source] || 0) + 1;
+                            return acc;
+                          },
+                          {},
+                        );
+                        const presentSources = sourceOrder.filter((s) => counts[s] > 0);
+                        const shown = sourceFilter
+                          ? webVendors.filter((v) => v.source === sourceFilter)
+                          : webVendors;
+                        return (
+                          <>
+                            {/* Source legend + filter — only show when more than one source */}
+                            {presentSources.length > 1 && (
+                              <div className="flex flex-wrap items-center gap-2 mb-4">
+                                <span className="text-xs font-medium text-gray-400 mr-1">
+                                  Sources:
+                                </span>
+                                <button
+                                  onClick={() => setSourceFilter('')}
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                                    sourceFilter === ''
+                                      ? 'bg-gray-900 border-gray-900 text-white'
+                                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                                  }`}
+                                >
+                                  All ({webVendors.length})
+                                </button>
+                                {presentSources.map((s) => {
+                                  const b = getSourceBadge(s, '');
+                                  const Icon = b.Icon;
+                                  const active = sourceFilter === s;
+                                  return (
+                                    <button
+                                      key={s}
+                                      onClick={() =>
+                                        setSourceFilter(active ? '' : s)
+                                      }
+                                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${b.className} ${
+                                        active
+                                          ? 'ring-2 ring-offset-1 ring-gray-400'
+                                          : 'opacity-90 hover:opacity-100'
+                                      }`}
+                                    >
+                                      <Icon size={11} />
+                                      {b.label} ({counts[s]})
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            <div className="space-y-4">
+                              {shown.map((v) => (
+                                <WebVendorCard key={v.id} vendor={v} />
+                              ))}
+                            </div>
+                          </>
+                        );
+                      })()
                     )}
                   </div>
                 )}

@@ -20,6 +20,7 @@ import {
   Globe,
   ExternalLink,
   MapPinned,
+  Navigation,
 } from 'lucide-react';
 import { discovery, ApiVendor, ApiWebVendor } from '../../../lib/api';
 import { getTradeImage } from '../../../lib/trade-images';
@@ -325,6 +326,17 @@ function WebVendorCard({ vendor }: { vendor: ApiWebVendor }) {
             </div>
           )}
 
+          {vendor.distanceMiles != null && (
+            <div className="flex items-center gap-1.5 text-gray-500">
+              <Navigation size={13} className="flex-shrink-0" />
+              <span className="text-sm">
+                {vendor.distanceMiles < 0.1
+                  ? 'Less than 0.1 mi away'
+                  : `${vendor.distanceMiles.toFixed(1)} mi away`}
+              </span>
+            </div>
+          )}
+
           <div className="pt-1 flex items-center gap-1.5 text-amber-600 text-sm font-medium">
             <span>View on {vendor.sourceLabel}</span>
             <ExternalLink size={13} />
@@ -355,6 +367,7 @@ export default function DiscoveryPage() {
   const [webMessage, setWebMessage] = useState<string | undefined>();
   const [webProvider, setWebProvider] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string>(''); // '' = all sources
+  const [maxDistance, setMaxDistance] = useState<number>(0); // 0 = any distance
 
   const performSearch = useCallback(async () => {
     setLoading(true);
@@ -482,6 +495,24 @@ export default function DiscoveryPage() {
               placeholder="Zip Code"
               className="w-full bg-white border border-gray-300 rounded-xl pl-9 pr-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-200 transition-all text-sm"
             />
+          </div>
+          {/* Distance limit — only meaningful when a ZIP is set */}
+          <div className="relative w-full sm:w-40">
+            <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+            <select
+              value={maxDistance}
+              onChange={(e) => setMaxDistance(Number(e.target.value))}
+              disabled={!zipCode.trim()}
+              title={zipCode.trim() ? 'Limit results by distance from ZIP' : 'Enter a ZIP to filter by distance'}
+              className="w-full appearance-none bg-white border border-gray-300 rounded-xl pl-9 pr-8 py-3 text-gray-900 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-200 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              <option value={0}>Any distance</option>
+              <option value={5}>Within 5 mi</option>
+              <option value={10}>Within 10 mi</option>
+              <option value={25}>Within 25 mi</option>
+              <option value={50}>Within 50 mi</option>
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
           </div>
           <button
             onClick={performSearch}
@@ -902,18 +933,41 @@ export default function DiscoveryPage() {
                           'yelp',
                           'serpapi',
                         ];
-                        const counts = webVendors.reduce<Record<string, number>>(
-                          (acc, v) => {
-                            acc[v.source] = (acc[v.source] || 0) + 1;
-                            return acc;
-                          },
-                          {},
-                        );
+                        // Apply the distance limit first. Results with an unknown
+                        // distance (distanceMiles == null) are kept so we never
+                        // over-hide listings that simply lack coordinates.
+                        const distanceFiltered =
+                          maxDistance > 0
+                            ? webVendors.filter(
+                                (v) =>
+                                  v.distanceMiles == null ||
+                                  v.distanceMiles <= maxDistance,
+                              )
+                            : webVendors;
+                        const hiddenByDistance =
+                          webVendors.length - distanceFiltered.length;
+                        const counts = distanceFiltered.reduce<
+                          Record<string, number>
+                        >((acc, v) => {
+                          acc[v.source] = (acc[v.source] || 0) + 1;
+                          return acc;
+                        }, {});
                         const presentSources = sourceOrder.filter((s) => counts[s] > 0);
                         const shown = sourceFilter
-                          ? webVendors.filter((v) => v.source === sourceFilter)
-                          : webVendors;
+                          ? distanceFiltered.filter((v) => v.source === sourceFilter)
+                          : distanceFiltered;
                         return (
+                          distanceFiltered.length === 0 ? (
+                            <div className="bg-gray-50 border border-dashed border-gray-300 rounded-2xl px-5 py-6 text-sm text-gray-500">
+                              No results within {maxDistance} mi of ZIP {zipCode}.{' '}
+                              <button
+                                onClick={() => setMaxDistance(0)}
+                                className="text-amber-600 hover:text-amber-700 font-medium underline"
+                              >
+                                Show all distances
+                              </button>
+                            </div>
+                          ) :
                           <>
                             {/* Source legend + filter — only show when more than one source */}
                             {presentSources.length > 1 && (
@@ -929,7 +983,7 @@ export default function DiscoveryPage() {
                                       : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
                                   }`}
                                 >
-                                  All ({webVendors.length})
+                                  All ({distanceFiltered.length})
                                 </button>
                                 {presentSources.map((s) => {
                                   const b = getSourceBadge(s, '');
@@ -953,6 +1007,17 @@ export default function DiscoveryPage() {
                                   );
                                 })}
                               </div>
+                            )}
+                            {hiddenByDistance > 0 && (
+                              <p className="text-xs text-gray-400 mb-3">
+                                {hiddenByDistance} result{hiddenByDistance !== 1 ? 's' : ''} beyond {maxDistance} mi hidden.{' '}
+                                <button
+                                  onClick={() => setMaxDistance(0)}
+                                  className="text-amber-600 hover:text-amber-700 underline"
+                                >
+                                  Show all
+                                </button>
+                              </p>
                             )}
                             <div className="space-y-4">
                               {shown.map((v) => (

@@ -58,6 +58,60 @@ interface WebSearchProvider {
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
+/*  Shared geo helpers — used by any provider that needs ZIP→coords or         */
+/*  point-to-point distance (Overpass, Google Places, etc.).                  */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+const GEO_USER_AGENT = 'DBM-Construction-Portal/1.0 (https://github.com/dbm)';
+// Module-level cache so every provider shares geocode results within the process.
+const sharedGeocodeCache = new Map<string, { lat: number; lon: number } | null>();
+
+/** Geocode a US ZIP to lat/lon via Nominatim. Cached (incl. negative results). */
+export async function geocodeZip(
+  zip: string,
+): Promise<{ lat: number; lon: number } | null> {
+  if (sharedGeocodeCache.has(zip)) return sharedGeocodeCache.get(zip) ?? null;
+  const url = `https://nominatim.openstreetmap.org/search?postalcode=${encodeURIComponent(
+    zip,
+  )}&country=USA&format=json&limit=1`;
+  try {
+    const res = await fetch(url, { headers: { 'User-Agent': GEO_USER_AGENT } });
+    if (!res.ok) {
+      sharedGeocodeCache.set(zip, null);
+      return null;
+    }
+    const data = (await res.json()) as Array<{ lat: string; lon: string }>;
+    if (!data.length) {
+      sharedGeocodeCache.set(zip, null);
+      return null;
+    }
+    const result = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+    sharedGeocodeCache.set(zip, result);
+    return result;
+  } catch {
+    sharedGeocodeCache.set(zip, null);
+    return null;
+  }
+}
+
+/** Great-circle distance between two points, in miles. */
+export function haversineMiles(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const R = 3958.7613; // Earth radius in miles
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.asin(Math.sqrt(a));
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
 /*  OpenStreetMap provider — Nominatim geocode + Overpass POI search          */
 /*  Free, no API key, CC-licensed. Default provider.                          */
 /* ────────────────────────────────────────────────────────────────────────── */
@@ -546,7 +600,10 @@ class GooglePlacesProvider implements WebSearchProvider {
       }
 
       const data = (await res.json()) as { places?: GooglePlace[] };
-      return (data.places ?? []).map((p) => this.normalize(p));
+      // Geocode the ZIP once so we can compute distance for each place
+      // (Places Text Search itself does not return a distance value).
+      const origin = await geocodeZip(params.zip);
+      return (data.places ?? []).map((p) => this.normalize(p, origin));
     } catch (err) {
       this.logger.error(
         `Google Places search failed: ${(err as Error).message}`,
@@ -574,7 +631,10 @@ class GooglePlacesProvider implements WebSearchProvider {
     return map[category ?? ''] ?? 'construction contractor';
   }
 
-  private normalize(p: GooglePlace): WebVendor {
+  private normalize(
+    p: GooglePlace,
+    origin: { lat: number; lon: number } | null,
+  ): WebVendor {
     const comp = (type: string): string | null =>
       p.addressComponents?.find((c) => c.types?.includes(type))?.shortText ??
       p.addressComponents?.find((c) => c.types?.includes(type))?.longText ??
@@ -590,7 +650,19 @@ class GooglePlacesProvider implements WebSearchProvider {
       city: comp('locality') ?? comp('postal_town') ?? null,
       state: comp('administrative_area_level_1') ?? null,
       zip: comp('postal_code') ?? null,
-      distanceMiles: null, // Places Text Search does not return distance
+      // Distance computed from the place's own coordinates vs. the geocoded
+      // search ZIP. Falls back to null if either is unavailable.
+      distanceMiles:
+        origin &&
+        typeof p.location?.latitude === 'number' &&
+        typeof p.location?.longitude === 'number'
+          ? haversineMiles(
+              origin.lat,
+              origin.lon,
+              p.location.latitude,
+              p.location.longitude,
+            )
+          : null,
       categories: (p.types ?? []).map((t) => t.replace(/_/g, ' ')),
       imageUrl: null,
       source: 'google-places',

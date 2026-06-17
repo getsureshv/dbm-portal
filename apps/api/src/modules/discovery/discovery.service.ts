@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
+import { geocodeZip, haversineMiles } from './web-search.service';
 
 export interface SearchVendorsParams {
   type: 'professional' | 'supplier' | 'freight';
@@ -23,7 +24,16 @@ export interface VendorCard {
   rating: number | null;
   reviewCount: number;
   location: { zip: string } | null;
+  distanceMiles: number | null;
   image: string | null;
+}
+
+/** Pull a US ZIP out of a profile's JSON address blob. */
+function zipFromAddress(address: unknown): string | null {
+  if (!address || typeof address !== 'object') return null;
+  const zip = (address as Record<string, unknown>).zipCode;
+  if (typeof zip === 'string' && zip.trim()) return zip.trim();
+  return null;
 }
 
 @Injectable()
@@ -143,6 +153,8 @@ export class DiscoveryService {
       type,
       category,
       query,
+      zip,
+      radiusMiles,
       licenseStatus,
       minYearsInBusiness,
       cursor,
@@ -238,30 +250,70 @@ export class DiscoveryService {
     const vendorList = hasNextPage ? vendors.slice(0, limit) : vendors;
     const nextCursor = hasNextPage ? vendorList[vendorList.length - 1]?.id : undefined;
 
-    const vendorCards: VendorCard[] = vendorList.map((vendor: any) => {
-      const name =
-        vendor.companyName ||
-        (vendor.firstName && vendor.lastName
-          ? `${vendor.firstName} ${vendor.lastName}`
-          : 'Unknown');
+    // Geocode the search ZIP once (if provided) so we can compute each
+    // vendor's distance from it. Vendor coordinates come from geocoding the
+    // ZIP stored in their JSON address (profiles have no lat/lon column).
+    const origin = zip ? await geocodeZip(zip) : null;
 
-      const trades: string[] = [];
-      if (vendor.tradeName?.name) trades.push(vendor.tradeName.name);
-      if (vendor.tradeCategory?.label && trades.length === 0) trades.push(vendor.tradeCategory.label);
+    let vendorCards: VendorCard[] = await Promise.all(
+      vendorList.map(async (vendor: any): Promise<VendorCard> => {
+        const name =
+          vendor.companyName ||
+          (vendor.firstName && vendor.lastName
+            ? `${vendor.firstName} ${vendor.lastName}`
+            : 'Unknown');
 
-      return {
-        id: vendor.id,
-        name,
-        providerType: type,
-        yearsInBusiness: vendor.yearsInBusiness ?? null,
-        licenseStatus: vendor.licenseStatus || 'NOT_APPLICABLE',
-        trades,
-        rating: null,
-        reviewCount: 0,
-        location: null,
-        image: vendor.profileImageKey || null,
-      };
-    });
+        const trades: string[] = [];
+        if (vendor.tradeName?.name) trades.push(vendor.tradeName.name);
+        if (vendor.tradeCategory?.label && trades.length === 0)
+          trades.push(vendor.tradeCategory.label);
+
+        const vendorZip = zipFromAddress(vendor.address);
+        let distanceMiles: number | null = null;
+        if (origin && vendorZip) {
+          const vGeo = await geocodeZip(vendorZip);
+          if (vGeo) {
+            distanceMiles = haversineMiles(
+              origin.lat,
+              origin.lon,
+              vGeo.lat,
+              vGeo.lon,
+            );
+          }
+        }
+
+        return {
+          id: vendor.id,
+          name,
+          providerType: type,
+          yearsInBusiness: vendor.yearsInBusiness ?? null,
+          licenseStatus: vendor.licenseStatus || 'NOT_APPLICABLE',
+          trades,
+          rating: null,
+          reviewCount: 0,
+          location: vendorZip ? { zip: vendorZip } : null,
+          distanceMiles,
+          image: vendor.profileImageKey || null,
+        };
+      }),
+    );
+
+    // Apply the radius filter in-memory (distance can't be expressed in the
+    // Prisma/SQL query since it derives from geocoded JSON ZIPs). Vendors with
+    // an unknown distance are kept so we never over-hide listings.
+    if (origin && radiusMiles && radiusMiles > 0) {
+      vendorCards = vendorCards.filter(
+        (v) => v.distanceMiles == null || v.distanceMiles <= radiusMiles,
+      );
+    }
+
+    // When we have distances, sort nearest-first; otherwise preserve order.
+    if (origin) {
+      vendorCards.sort(
+        (a, b) =>
+          (a.distanceMiles ?? Infinity) - (b.distanceMiles ?? Infinity),
+      );
+    }
 
     return { vendors: vendorCards, nextCursor, total };
   }

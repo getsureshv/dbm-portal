@@ -126,6 +126,7 @@ export interface ApiVendor {
   rating: number | null;
   reviewCount: number;
   location: { zip: string } | null;
+  distanceMiles: number | null;
   image: string | null;
 }
 

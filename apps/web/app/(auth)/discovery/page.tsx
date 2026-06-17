@@ -178,11 +178,21 @@ function ProviderCard({ vendor, onClick }: { vendor: ApiVendor; onClick: () => v
               </p>
             )}
 
-            {/* Location */}
+            {/* Location + distance */}
             {vendor.location && (
               <div className="flex items-center gap-1.5 text-gray-500">
                 <MapPin size={14} className="flex-shrink-0" />
-                <span className="text-sm">{vendor.location.zip}</span>
+                <span className="text-sm">
+                  {vendor.location.zip}
+                  {vendor.distanceMiles != null && (
+                    <span className="text-gray-400">
+                      {' '}·{' '}
+                      {vendor.distanceMiles < 0.1
+                        ? '< 0.1 mi away'
+                        : `${vendor.distanceMiles.toFixed(1)} mi away`}
+                    </span>
+                  )}
+                </span>
               </div>
             )}
 
@@ -367,7 +377,7 @@ export default function DiscoveryPage() {
   const [webMessage, setWebMessage] = useState<string | undefined>();
   const [webProvider, setWebProvider] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string>(''); // '' = all sources
-  const [maxDistance, setMaxDistance] = useState<number>(0); // 0 = any distance
+  const [maxDistance, setMaxDistance] = useState<number>(25); // miles; 0 = any distance
 
   const performSearch = useCallback(async () => {
     setLoading(true);
@@ -410,6 +420,7 @@ export default function DiscoveryPage() {
       if (searchQuery) params.query = searchQuery;
       if (licenseFilter) params.licenseStatus = licenseFilter;
       if (minYears > 0) params.minYearsInBusiness = String(minYears);
+      if (zip && maxDistance > 0) params.radiusMiles = String(maxDistance);
 
       // Default to professional if no type set
       if (!params.type) params.type = 'professional';
@@ -425,7 +436,7 @@ export default function DiscoveryPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedType, selectedCategory, zipCode, searchQuery, licenseFilter, minYears]);
+  }, [selectedType, selectedCategory, zipCode, searchQuery, licenseFilter, minYears, maxDistance]);
 
   // Initial load
   useEffect(() => {
@@ -440,6 +451,7 @@ export default function DiscoveryPage() {
     setLicenseFilter('');
     setMinRating(0);
     setMinYears(0);
+    setMaxDistance(25); // back to default radius
   };
 
   const hasActiveFilters =
@@ -448,7 +460,8 @@ export default function DiscoveryPage() {
     zipCode !== '' ||
     licenseFilter !== '' ||
     minRating > 0 ||
-    minYears > 0;
+    minYears > 0 ||
+    maxDistance !== 25;
 
   // Client-side filtering for license, rating, years (API may not support all)
   const filteredVendors = vendors.filter((v) => {

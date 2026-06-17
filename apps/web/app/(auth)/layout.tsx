@@ -89,10 +89,10 @@ export default function AuthLayout({
     }
 
     // OWNER (default)
+    // Permits & Codes is temporarily hidden for non-admin personas.
     return [
       { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/projects', label: 'Projects', icon: Briefcase },
-      { href: '/permits', label: 'Permits & Codes', icon: Scale },
       { href: '/discovery', label: 'Discovery', icon: Compass },
       { href: '/chat', label: 'Chat', icon: MessageSquare },
       { href: '/profile', label: 'Profile', icon: Building2 },

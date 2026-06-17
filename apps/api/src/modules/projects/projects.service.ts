@@ -239,6 +239,12 @@ export class ProjectsService {
         documents: true,
         scopeDocument: true,
         companies: { orderBy: { createdAt: 'asc' } },
+        notes: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            author: { select: { id: true, name: true, email: true } },
+          },
+        },
       },
     });
 
@@ -319,6 +325,39 @@ export class ProjectsService {
         s3Key,
         filename,
         category: category as any,
+      },
+    });
+  }
+
+  // ── Notes / comments ────────────────────────────────────────────────────
+
+  // List a project's notes newest-first, with author identity. Reading notes
+  // only requires read access to the project.
+  async listNotes(projectId: string, userId: string) {
+    await this.getProject(projectId, userId, 'read');
+
+    return this.prisma.projectNote.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        author: { select: { id: true, name: true, email: true } },
+      },
+    });
+  }
+
+  // Add a note to a project. The author is the authenticated caller and the
+  // timestamp is set by the database. Requires update access to the project.
+  async addNote(projectId: string, userId: string, body: string) {
+    await this.getProject(projectId, userId, 'update');
+
+    return this.prisma.projectNote.create({
+      data: {
+        projectId,
+        authorId: userId,
+        body,
+      },
+      include: {
+        author: { select: { id: true, name: true, email: true } },
       },
     });
   }

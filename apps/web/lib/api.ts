@@ -117,6 +117,18 @@ export interface ApiProject {
   documents: ApiDocument[];
   scopeDocument: ApiScopeDocument | null;
   companies?: ApiProjectCompany[];
+  notes?: ApiProjectNote[];
+}
+
+// A note/comment on a project, captured with its author and timestamp.
+export interface ApiProjectNote {
+  id: string;
+  projectId: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  author: { id: string; name: string | null; email: string };
 }
 
 export interface ApiDocument {
@@ -216,6 +228,16 @@ export const projects = {
     request<ApiProject>(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
   delete: (id: string) => request<void>(`/projects/${id}`, { method: 'DELETE' }),
+
+  // Notes / comments
+  listNotes: (projectId: string) =>
+    request<ApiProjectNote[]>(`/projects/${projectId}/notes`),
+
+  addNote: (projectId: string, body: string) =>
+    request<ApiProjectNote>(`/projects/${projectId}/notes`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }),
 
   addDocument: (projectId: string, data: { s3Key: string; filename: string; category: string }) =>
     request<ApiDocument>(`/projects/${projectId}/documents`, {

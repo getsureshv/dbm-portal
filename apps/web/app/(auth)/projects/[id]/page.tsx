@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronRight, ChevronDown, Loader2, AlertCircle, Pencil, ScanLine, Eye, X, Check, Wand2, Trash2, UserPlus, Mail, Clock, Building2, Globe, Phone } from 'lucide-react';
+import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronRight, ChevronDown, Loader2, AlertCircle, Pencil, ScanLine, Eye, X, Check, Wand2, Trash2, UserPlus, Mail, Clock, Building2, Globe, Phone, MessageSquare, Send } from 'lucide-react';
 import { useAuth } from '../../../../lib/auth-context';
-import { projects as projectsApi, uploads as uploadsApi, documents as documentsApi, ApiProject, ApiDocument, ProjectGrant } from '../../../../lib/api';
+import { projects as projectsApi, uploads as uploadsApi, documents as documentsApi, ApiProject, ApiDocument, ProjectGrant, ApiProjectNote } from '../../../../lib/api';
 
 type TabType = 'overview' | 'documents' | 'scope' | 'team';
 
@@ -757,6 +757,174 @@ function TeamTab({ project }: { project: ApiProject }) {
 
 // ─── Main Component ─────────────────────────────────────────
 
+// ─── Notes & Comments ──────────────────────────────────────
+
+function formatNoteTimestamp(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.round(diffMs / 60000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function authorLabel(author: ApiProjectNote['author']): string {
+  return author?.name?.trim() || author?.email || 'Unknown user';
+}
+
+function authorInitials(author: ApiProjectNote['author']): string {
+  const label = authorLabel(author);
+  const parts = label.split(/[\s@.]+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? '?';
+  const second = parts[1]?.[0] ?? '';
+  return (first + second).toUpperCase();
+}
+
+function ProjectNotes({
+  projectId,
+  initialNotes,
+}: {
+  projectId: string;
+  initialNotes?: ApiProjectNote[];
+}) {
+  const [notes, setNotes] = useState<ApiProjectNote[]>(initialNotes ?? []);
+  const [loading, setLoading] = useState(!initialNotes);
+  const [body, setBody] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // If the project payload already carried notes, trust it; otherwise fetch.
+    if (initialNotes) return;
+    let active = true;
+    projectsApi
+      .listNotes(projectId)
+      .then((data) => {
+        if (active) setNotes(data);
+      })
+      .catch((err) => {
+        if (active) setError(err.message || 'Failed to load notes');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId, initialNotes]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = body.trim();
+    if (!trimmed || submitting) return;
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const created = await projectsApi.addNote(projectId, trimmed);
+      setNotes((prev) => [created, ...prev]);
+      setBody('');
+    } catch (err: any) {
+      setError(err.message || 'Failed to add note');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
+      <div className="flex items-center gap-2 mb-5">
+        <MessageSquare size={20} className="text-amber-500" />
+        <h2 className="text-xl font-bold text-gray-900">Notes &amp; Comments</h2>
+        {notes.length > 0 && (
+          <span className="text-sm text-gray-400">({notes.length})</span>
+        )}
+      </div>
+
+      {/* Add note */}
+      <form onSubmit={handleSubmit} className="mb-6">
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder="Add a note or comment…"
+          rows={3}
+          className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 transition-colors resize-y"
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') handleSubmit(e);
+          }}
+        />
+        {error && (
+          <p className="mt-2 text-sm text-red-600 flex items-center gap-1.5">
+            <AlertCircle size={14} />
+            {error}
+          </p>
+        )}
+        <div className="flex items-center justify-between mt-2">
+          <span className="text-xs text-gray-400">⌘/Ctrl + Enter to post</span>
+          <button
+            type="submit"
+            disabled={!body.trim() || submitting}
+            className="inline-flex items-center gap-2 bg-amber-500 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {submitting ? (
+              <Loader2 className="animate-spin" size={15} />
+            ) : (
+              <Send size={15} />
+            )}
+            Post Note
+          </button>
+        </div>
+      </form>
+
+      {/* Timeline */}
+      {loading ? (
+        <div className="flex justify-center py-6">
+          <Loader2 className="animate-spin text-amber-500" size={20} />
+        </div>
+      ) : notes.length === 0 ? (
+        <p className="text-sm text-gray-400 text-center py-6">
+          No notes yet. Add the first one above.
+        </p>
+      ) : (
+        <ul className="space-y-4">
+          {notes.map((note) => (
+            <li key={note.id} className="flex gap-3">
+              <div className="flex-shrink-0 w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-semibold">
+                {authorInitials(note.author)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="font-medium text-gray-900 text-sm">
+                    {authorLabel(note.author)}
+                  </span>
+                  <span
+                    className="text-xs text-gray-400"
+                    title={new Date(note.createdAt).toLocaleString()}
+                  >
+                    {formatNoteTimestamp(note.createdAt)}
+                  </span>
+                </div>
+                <p className="text-gray-700 text-sm mt-1 whitespace-pre-wrap break-words">
+                  {note.body}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function ProjectDetailPage({ params }: { params: { id: string } }) {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -1011,6 +1179,9 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
                 </div>
               </div>
             )}
+
+            {/* Notes & Comments */}
+            <ProjectNotes projectId={project.id} initialNotes={project.notes} />
 
             {/* Scope Document Preview */}
             {project.scopeDocument && project.scopeDocument.projectScope && (

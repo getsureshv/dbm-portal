@@ -25,6 +25,7 @@ import { RecordGrantsService } from '../access/record-grants.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { GrantProjectAccessDto } from './dto/grant-project-access.dto';
+import { CreateNoteDto } from './dto/create-note.dto';
 
 @ApiTags('Projects')
 @Controller('projects')
@@ -109,6 +110,26 @@ export class ProjectsController {
   async getProject(@Req() req: any, @Param('id') id: string) {
     const userId = req.userId;
     return this.projectsService.getProject(id, userId);
+  }
+
+  @Get(':id/notes')
+  @RequirePermission('read', 'project')
+  @ApiOperation({ summary: 'List notes/comments on a project (newest first)' })
+  async listNotes(@Req() req: any, @Param('id') id: string) {
+    const userId = req.userId;
+    return this.projectsService.listNotes(id, userId);
+  }
+
+  @Post(':id/notes')
+  @RequirePermission('update', 'project')
+  @ApiOperation({ summary: 'Add a note/comment to a project' })
+  async addNote(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() createNoteDto: CreateNoteDto,
+  ) {
+    const userId = req.userId;
+    return this.projectsService.addNote(id, userId, createNoteDto.body);
   }
 
   @Patch(':id')

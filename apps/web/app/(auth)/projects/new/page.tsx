@@ -54,6 +54,13 @@ export default function NewProjectPage() {
 
   const canSubmit = title.trim() && type && zipCode.trim() && !submitting;
 
+  // Only the title, type, and ZIP are required. Surface what is still missing
+  // so a disabled button never looks like the companies section is blocking it.
+  const missingRequired = [
+    !title.trim() && 'a project title',
+    !zipCode.trim() && 'a ZIP code',
+  ].filter(Boolean) as string[];
+
   const addCompany = () => setCompanies((prev) => [...prev, emptyCompany()]);
   const removeCompany = (index: number) =>
     setCompanies((prev) => prev.filter((_, i) => i !== index));
@@ -431,20 +438,28 @@ export default function NewProjectPage() {
         </div>
 
         {/* Submit */}
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          className="w-full bg-amber-500 text-white font-semibold py-3 rounded-lg hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-        >
-          {submitting ? (
-            <>
-              <Loader2 className="animate-spin" size={18} />
-              Creating Project...
-            </>
-          ) : (
-            'Create Project'
+        <div>
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className="w-full bg-amber-500 text-white font-semibold py-3 rounded-lg hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="animate-spin" size={18} />
+                Creating Project...
+              </>
+            ) : (
+              'Create Project'
+            )}
+          </button>
+          {!submitting && missingRequired.length > 0 && (
+            <p className="mt-2 text-center text-xs text-gray-500">
+              Add {missingRequired.join(' and ')} to create the project. Companies
+              and contacts are optional.
+            </p>
           )}
-        </button>
+        </div>
       </form>
     </div>
   );

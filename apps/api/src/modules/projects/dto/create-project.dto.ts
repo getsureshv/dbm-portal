@@ -7,7 +7,12 @@ import {
   ValidateNested,
   IsEmail,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
+
+// Treat empty/whitespace-only strings as undefined so optional fields (e.g. a
+// blank contact email) don't trip validators like @IsEmail.
+const emptyToUndefined = ({ value }: { value: unknown }) =>
+  typeof value === 'string' && value.trim() === '' ? undefined : value;
 
 export enum ProjectType {
   RESIDENTIAL = 'RESIDENTIAL',
@@ -43,6 +48,7 @@ export class ProjectCompanyDto {
   contactTitle?: string;
 
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEmail()
   contactEmail?: string;
 

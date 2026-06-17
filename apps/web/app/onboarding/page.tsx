@@ -172,7 +172,9 @@ export default function OnboardingPage() {
       const idToken = await signInWithApple();
       await login(idToken);
     } catch (err: any) {
-      setError(err.message || 'Apple sign-up failed');
+      if (err.message !== 'Redirecting to Apple sign-in...') {
+        setError(err.message || 'Apple sign-up failed');
+      }
     } finally {
       setSocialLoading(null);
     }

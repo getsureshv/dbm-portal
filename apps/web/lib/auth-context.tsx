@@ -30,7 +30,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const PUBLIC_PATHS = ['/', '/login', '/onboarding', '/discovery'];
+const PUBLIC_PATHS = ['/', '/login', '/forgot-password', '/onboarding', '/discovery'];
 
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.includes(pathname)) return true;

@@ -5,7 +5,6 @@ import {
   Lock,
   AlertCircle,
   Loader2,
-  CheckCircle2,
   Sparkles,
   ArrowRight,
 } from 'lucide-react';
@@ -17,7 +16,6 @@ import {
   signInWithGoogle,
   signInWithApple,
   signInWithEmailPassword,
-  sendPasswordReset,
   isFirebaseConfigured,
 } from '../../lib/firebase';
 
@@ -37,7 +35,6 @@ export default function LoginPage() {
     null,
   );
   const [error, setError] = useState<string | null>(null);
-  const [resetSent, setResetSent] = useState(false);
 
   useEffect(() => {
     if (!loading && user) {
@@ -72,23 +69,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleForgotPassword = async () => {
-    if (!email) {
-      setError('Enter your email above first, then click "Forgot password?".');
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
-      await sendPasswordReset(email);
-      setResetSent(true);
-    } catch (err: any) {
-      setError(err.message || 'Failed to send reset email');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const handleGoogleSignIn = async () => {
     setSocialLoading('google');
     setError(null);
@@ -111,7 +91,9 @@ export default function LoginPage() {
       const idToken = await signInWithApple();
       await login(idToken);
     } catch (err: any) {
-      setError(err.message || 'Apple sign-in failed');
+      if (err.message !== 'Redirecting to Apple sign-in...') {
+        setError(err.message || 'Apple sign-in failed');
+      }
     } finally {
       setSocialLoading(null);
     }
@@ -247,17 +229,6 @@ export default function LoginPage() {
             </div>
           )}
 
-          {resetSent && (
-            <div className="mb-5 p-3.5 bg-emerald-50 border border-emerald-100 rounded-xl flex items-start gap-2.5 text-emerald-700 text-sm">
-              <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
-              <span>
-                Password reset email sent to{' '}
-                <span className="font-semibold">{email}</span>. Check your
-                inbox.
-              </span>
-            </div>
-          )}
-
           {/* Social Auth (top — common UX pattern) */}
           <div className="grid grid-cols-2 gap-3 mb-5">
             <button
@@ -341,13 +312,12 @@ export default function LoginPage() {
                   Password
                 </label>
                 {isFirebaseConfigured && (
-                  <button
-                    type="button"
-                    onClick={handleForgotPassword}
+                  <Link
+                    href="/forgot-password"
                     className="text-xs text-navy font-semibold hover:text-gold-dark transition"
                   >
                     Forgot password?
-                  </button>
+                  </Link>
                 )}
               </div>
               <div className="relative">
@@ -389,6 +359,29 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+          {/* Account-recovery helper (covers "forgot username": DBM uses your
+              email as the only identifier, so there is no separate username). */}
+          <p className="text-xs text-gray-400 text-center mt-5">
+            Not sure which email you used? Try the{' '}
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              className="text-gray-500 font-medium underline hover:text-gray-700 transition"
+            >
+              Google
+            </button>{' '}
+            or{' '}
+            <button
+              type="button"
+              onClick={handleAppleSignIn}
+              className="text-gray-500 font-medium underline hover:text-gray-700 transition"
+            >
+              Apple
+            </button>{' '}
+            button — DBM signs you in by email, so there&apos;s no separate
+            username to remember.
+          </p>
 
           {/* Sign-up CTA */}
           <p className="text-sm text-gray-500 text-center mt-7">

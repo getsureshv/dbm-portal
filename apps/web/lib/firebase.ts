@@ -89,6 +89,20 @@ export async function signInWithApple(): Promise<string> {
     if (error.code === 'auth/popup-closed-by-user') {
       throw new Error('Sign-in popup was closed');
     }
+    // Apple frequently blocks popups (Safari/iOS in particular). Fall back to
+    // a full-page redirect; the result is picked up by handleRedirectResult()
+    // in auth-context on the next page load.
+    if (
+      error.code === 'auth/popup-blocked' ||
+      error.code === 'auth/cancelled-popup-request' ||
+      error.code === 'auth/operation-not-supported-in-this-environment'
+    ) {
+      await signInWithRedirect(auth, appleProvider);
+      throw new Error('Redirecting to Apple sign-in...');
+    }
+    if (error.code === 'auth/operation-not-allowed') {
+      throw new Error('Apple sign-in is not enabled. Please use another method.');
+    }
     throw new Error(error.message || 'Apple sign-in failed');
   }
 }

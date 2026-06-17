@@ -158,10 +158,10 @@ export default function ForgotPasswordPage() {
             <div className="mt-5 p-3.5 bg-blue-50/60 border border-blue-100 rounded-xl flex items-start gap-2.5 text-blue-800 text-xs">
               <Info size={15} className="shrink-0 mt-0.5" />
               <span>
-                Signed up with Google or Apple? Those accounts don&apos;t have a
-                DBM password — just use the{' '}
+                Signed up with Google? That account doesn&apos;t have a DBM
+                password — just use the{' '}
                 <Link href="/login" className="font-semibold underline">
-                  Google or Apple button
+                  Google button
                 </Link>{' '}
                 on the sign-in page.
               </span>

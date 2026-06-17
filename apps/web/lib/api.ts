@@ -239,6 +239,17 @@ export const projects = {
       body: JSON.stringify({ body }),
     }),
 
+  updateNote: (projectId: string, noteId: string, body: string) =>
+    request<ApiProjectNote>(`/projects/${projectId}/notes/${noteId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ body }),
+    }),
+
+  deleteNote: (projectId: string, noteId: string) =>
+    request<void>(`/projects/${projectId}/notes/${noteId}`, {
+      method: 'DELETE',
+    }),
+
   addDocument: (projectId: string, data: { s3Key: string; filename: string; category: string }) =>
     request<ApiDocument>(`/projects/${projectId}/documents`, {
       method: 'POST',

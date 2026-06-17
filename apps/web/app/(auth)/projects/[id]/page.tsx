@@ -792,15 +792,63 @@ function authorInitials(author: ApiProjectNote['author']): string {
 function ProjectNotes({
   projectId,
   initialNotes,
+  currentUserId,
 }: {
   projectId: string;
   initialNotes?: ApiProjectNote[];
+  currentUserId: string | null;
 }) {
   const [notes, setNotes] = useState<ApiProjectNote[]>(initialNotes ?? []);
   const [loading, setLoading] = useState(!initialNotes);
   const [body, setBody] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Inline edit + delete state, keyed by note id.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editBody, setEditBody] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const startEdit = (note: ApiProjectNote) => {
+    setEditingId(note.id);
+    setEditBody(note.body);
+    setEditError(null);
+  };
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditBody('');
+    setEditError(null);
+  };
+  const saveEdit = async (noteId: string) => {
+    const trimmed = editBody.trim();
+    if (!trimmed || savingEdit) return;
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const updated = await projectsApi.updateNote(projectId, noteId, trimmed);
+      setNotes((prev) => prev.map((n) => (n.id === noteId ? updated : n)));
+      cancelEdit();
+    } catch (err: any) {
+      setEditError(err.message || 'Failed to save note');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+  const handleDelete = async (noteId: string) => {
+    setDeletingId(noteId);
+    try {
+      await projectsApi.deleteNote(projectId, noteId);
+      setNotes((prev) => prev.filter((n) => n.id !== noteId));
+      setConfirmDeleteId(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete note');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   useEffect(() => {
     // If the project payload already carried notes, trust it; otherwise fetch.
@@ -896,29 +944,137 @@ function ProjectNotes({
         </p>
       ) : (
         <ul className="space-y-4">
-          {notes.map((note) => (
-            <li key={note.id} className="flex gap-3">
-              <div className="flex-shrink-0 w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-semibold">
-                {authorInitials(note.author)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-baseline gap-2 flex-wrap">
-                  <span className="font-medium text-gray-900 text-sm">
-                    {authorLabel(note.author)}
-                  </span>
-                  <span
-                    className="text-xs text-gray-400"
-                    title={new Date(note.createdAt).toLocaleString()}
-                  >
-                    {formatNoteTimestamp(note.createdAt)}
-                  </span>
+          {notes.map((note) => {
+            const isOwn = !!currentUserId && note.author?.id === currentUserId;
+            const isEditing = editingId === note.id;
+            const wasEdited =
+              new Date(note.updatedAt).getTime() -
+                new Date(note.createdAt).getTime() >
+              1000;
+            return (
+              <li key={note.id} className="flex gap-3 group">
+                <div className="flex-shrink-0 w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-semibold">
+                  {authorInitials(note.author)}
                 </div>
-                <p className="text-gray-700 text-sm mt-1 whitespace-pre-wrap break-words">
-                  {note.body}
-                </p>
-              </div>
-            </li>
-          ))}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="font-medium text-gray-900 text-sm">
+                      {authorLabel(note.author)}
+                    </span>
+                    <span
+                      className="text-xs text-gray-400"
+                      title={new Date(note.createdAt).toLocaleString()}
+                    >
+                      {formatNoteTimestamp(note.createdAt)}
+                    </span>
+                    {wasEdited && (
+                      <span
+                        className="text-xs text-gray-400 italic"
+                        title={`Edited ${new Date(note.updatedAt).toLocaleString()}`}
+                      >
+                        (edited)
+                      </span>
+                    )}
+                    {isOwn && !isEditing && (
+                      <span className="ml-auto flex items-center gap-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(note)}
+                          className="text-gray-400 hover:text-amber-600 transition-colors"
+                          title="Edit note"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(note.id)}
+                          className="text-gray-400 hover:text-red-600 transition-colors"
+                          title="Delete note"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </span>
+                    )}
+                  </div>
+
+                  {isEditing ? (
+                    <div className="mt-2">
+                      <textarea
+                        value={editBody}
+                        onChange={(e) => setEditBody(e.target.value)}
+                        rows={3}
+                        autoFocus
+                        className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-amber-500 transition-colors resize-y"
+                        onKeyDown={(e) => {
+                          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter')
+                            saveEdit(note.id);
+                          if (e.key === 'Escape') cancelEdit();
+                        }}
+                      />
+                      {editError && (
+                        <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
+                          <AlertCircle size={12} />
+                          {editError}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2 mt-2">
+                        <button
+                          type="button"
+                          onClick={() => saveEdit(note.id)}
+                          disabled={!editBody.trim() || savingEdit}
+                          className="inline-flex items-center gap-1.5 bg-amber-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {savingEdit ? (
+                            <Loader2 className="animate-spin" size={13} />
+                          ) : (
+                            <Check size={13} />
+                          )}
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEdit}
+                          disabled={savingEdit}
+                          className="inline-flex items-center gap-1.5 text-gray-500 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-gray-700 text-sm mt-1 whitespace-pre-wrap break-words">
+                      {note.body}
+                    </p>
+                  )}
+
+                  {confirmDeleteId === note.id && (
+                    <div className="mt-2 flex items-center gap-3 text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                      <span className="text-red-700">Delete this note?</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(note.id)}
+                        disabled={deletingId === note.id}
+                        className="inline-flex items-center gap-1 font-semibold text-red-600 hover:text-red-700 disabled:opacity-50"
+                      >
+                        {deletingId === note.id && (
+                          <Loader2 className="animate-spin" size={12} />
+                        )}
+                        Delete
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(null)}
+                        disabled={deletingId === note.id}
+                        className="text-gray-500 hover:text-gray-700"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -1181,7 +1337,11 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
             )}
 
             {/* Notes & Comments */}
-            <ProjectNotes projectId={project.id} initialNotes={project.notes} />
+            <ProjectNotes
+              projectId={project.id}
+              initialNotes={project.notes}
+              currentUserId={user?.id ?? null}
+            />
 
             {/* Scope Document Preview */}
             {project.scopeDocument && project.scopeDocument.projectScope && (

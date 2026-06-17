@@ -361,4 +361,54 @@ export class ProjectsService {
       },
     });
   }
+
+  // Load a note and confirm it belongs to the given project and that the caller
+  // is its author. Only the author may edit or delete their own note.
+  private async getOwnNoteOrThrow(
+    projectId: string,
+    noteId: string,
+    userId: string,
+  ) {
+    this.validateUuid(projectId);
+    this.validateUuid(noteId);
+
+    const note = await this.prisma.projectNote.findUnique({
+      where: { id: noteId },
+    });
+    if (!note || note.projectId !== projectId) {
+      throw new NotFoundException('Note not found');
+    }
+    if (note.authorId !== userId) {
+      throw new ForbiddenException('You can only modify your own notes');
+    }
+    return note;
+  }
+
+  // Edit a note's body. Author-only; the caller must also retain read access to
+  // the project. updatedAt is refreshed by Prisma.
+  async updateNote(
+    projectId: string,
+    noteId: string,
+    userId: string,
+    body: string,
+  ) {
+    await this.getProject(projectId, userId, 'read');
+    await this.getOwnNoteOrThrow(projectId, noteId, userId);
+
+    return this.prisma.projectNote.update({
+      where: { id: noteId },
+      data: { body },
+      include: {
+        author: { select: { id: true, name: true, email: true } },
+      },
+    });
+  }
+
+  // Delete a note. Author-only.
+  async deleteNote(projectId: string, noteId: string, userId: string) {
+    await this.getProject(projectId, userId, 'read');
+    await this.getOwnNoteOrThrow(projectId, noteId, userId);
+
+    await this.prisma.projectNote.delete({ where: { id: noteId } });
+  }
 }

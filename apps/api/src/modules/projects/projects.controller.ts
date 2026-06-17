@@ -132,6 +132,32 @@ export class ProjectsController {
     return this.projectsService.addNote(id, userId, createNoteDto.body);
   }
 
+  @Patch(':id/notes/:noteId')
+  @RequirePermission('read', 'project')
+  @ApiOperation({ summary: "Edit one of the caller's own notes" })
+  async updateNote(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('noteId') noteId: string,
+    @Body() createNoteDto: CreateNoteDto,
+  ) {
+    const userId = req.userId;
+    return this.projectsService.updateNote(id, noteId, userId, createNoteDto.body);
+  }
+
+  @Delete(':id/notes/:noteId')
+  @HttpCode(204)
+  @RequirePermission('read', 'project')
+  @ApiOperation({ summary: "Delete one of the caller's own notes" })
+  async deleteNote(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('noteId') noteId: string,
+  ) {
+    const userId = req.userId;
+    await this.projectsService.deleteNote(id, noteId, userId);
+  }
+
   @Patch(':id')
   @RequirePermission('update', 'project')
   @ApiOperation({ summary: 'Update mutable project fields' })

@@ -92,6 +92,33 @@ export class TasksController {
     return this.tasks.updateTask(id, req.userId, dto);
   }
 
+  // POST /tasks/:id/complete — mark the current user's part done.
+  // Body { done?: boolean } — pass { done: false } to undo.
+  @Post(':id/complete')
+  @ApiOperation({ summary: "Mark the current user's part of a task done" })
+  async completePart(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { done?: boolean },
+  ) {
+    const done = body?.done !== false;
+    return this.tasks.setAssignmentCompletion(id, req.userId, done);
+  }
+
+  // POST /tasks/:id/uncomplete — explicit undo of the current user's part.
+  @Post(':id/uncomplete')
+  @ApiOperation({ summary: "Undo the current user's part of a task" })
+  async uncompletePart(@Req() req: any, @Param('id') id: string) {
+    return this.tasks.setAssignmentCompletion(id, req.userId, false);
+  }
+
+  // POST /tasks/:id/force-complete — creator-only force the whole task done.
+  @Post(':id/force-complete')
+  @ApiOperation({ summary: 'Force-complete a task (creator only)' })
+  async forceComplete(@Req() req: any, @Param('id') id: string) {
+    return this.tasks.forceComplete(id, req.userId);
+  }
+
   // DELETE /tasks/:id
   @Delete(':id')
   @HttpCode(204)

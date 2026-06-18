@@ -219,7 +219,12 @@ function CommandCenter({ currentUserId }: { currentUserId: string | null }) {
 
   const filtered = allTasks.filter((t) => {
     if (projectFilter && t.projectId !== projectFilter) return false;
-    if (mineOnly && t.assigneeId !== currentUserId) return false;
+    if (mineOnly) {
+      const isMine =
+        t.assigneeId === currentUserId ||
+        t.assignments.some((a) => a.userId === currentUserId);
+      if (!isMine) return false;
+    }
     return true;
   });
 
@@ -234,12 +239,30 @@ function CommandCenter({ currentUserId }: { currentUserId: string | null }) {
     }
   };
 
-  const updateAssignee = async (task: ApiTask, assigneeId: string | null) => {
+  const updateAssignees = async (task: ApiTask, assigneeIds: string[]) => {
     try {
-      await tasksApi.update(task.id, { assigneeId });
+      await tasksApi.update(task.id, { assigneeIds });
       load();
     } catch {
       // ignore
+    }
+  };
+
+  const completePart = async (task: ApiTask, done: boolean) => {
+    try {
+      await tasksApi.complete(task.id, done);
+      load();
+    } catch {
+      load();
+    }
+  };
+
+  const forceComplete = async (task: ApiTask) => {
+    try {
+      await tasksApi.forceComplete(task.id);
+      load();
+    } catch {
+      load();
     }
   };
 
@@ -337,8 +360,11 @@ function CommandCenter({ currentUserId }: { currentUserId: string | null }) {
                         key={t.id}
                         task={t}
                         people={people}
+                        currentUserId={currentUserId}
                         onStatus={(s) => updateStatus(t, s)}
-                        onAssignee={(a) => updateAssignee(t, a)}
+                        onAssignees={(ids) => updateAssignees(t, ids)}
+                        onCompletePart={(done) => completePart(t, done)}
+                        onForceComplete={() => forceComplete(t)}
                         onDelete={() => remove(t)}
                       />
                     ))
@@ -366,10 +392,16 @@ function CreateTaskForm({
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [assigneeId, setAssigneeId] = useState('');
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [projectId, setProjectId] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const toggleAssignee = (id: string) => {
+    setAssigneeIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -379,7 +411,7 @@ function CreateTaskForm({
       await tasksApi.create({
         title: title.trim(),
         description: description.trim() || undefined,
-        assigneeId: assigneeId || null,
+        assigneeIds,
         projectId: projectId || null,
         dueAt: dueAt ? new Date(dueAt).toISOString() : null,
       });
@@ -419,19 +451,32 @@ function CreateTaskForm({
         rows={2}
         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
       />
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <select
-          value={assigneeId}
-          onChange={(e) => setAssigneeId(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-2.5 py-2 text-gray-700 bg-white focus:outline-none focus:border-amber-500"
-        >
-          <option value="">Unassigned</option>
-          {people.map((u) => (
-            <option key={u.id} value={u.id}>
-              {userLabel(u)}
-            </option>
-          ))}
-        </select>
+      <div>
+        <p className="text-xs font-medium text-gray-500 mb-2">
+          Assign to{assigneeIds.length > 0 ? ` (${assigneeIds.length})` : ' (optional)'}
+        </p>
+        <div className="border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
+          {people.length === 0 ? (
+            <p className="text-xs text-gray-400 px-3 py-3">No people found.</p>
+          ) : (
+            people.map((u) => (
+              <label
+                key={u.id}
+                className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
+              >
+                <input
+                  type="checkbox"
+                  checked={assigneeIds.includes(u.id)}
+                  onChange={() => toggleAssignee(u.id)}
+                  className="rounded border-gray-300 text-amber-500 focus:ring-amber-200"
+                />
+                <span className="text-sm text-gray-700">{userLabel(u)}</span>
+              </label>
+            ))
+          )}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <select
           value={projectId}
           onChange={(e) => setProjectId(e.target.value)}
@@ -475,18 +520,41 @@ function CreateTaskForm({
 function TaskCard({
   task,
   people,
+  currentUserId,
   onStatus,
-  onAssignee,
+  onAssignees,
+  onCompletePart,
+  onForceComplete,
   onDelete,
 }: {
   task: ApiTask;
   people: ApiDmUser[];
+  currentUserId: string | null;
   onStatus: (s: TaskStatus) => void;
-  onAssignee: (a: string | null) => void;
+  onAssignees: (ids: string[]) => void;
+  onCompletePart: (done: boolean) => void;
+  onForceComplete: () => void;
   onDelete: () => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editAssignees, setEditAssignees] = useState(false);
   const overdue = isOverdue(task);
+
+  const assignments = task.assignments ?? [];
+  const total = assignments.length;
+  const doneCount = assignments.filter((a) => a.completedAt !== null).length;
+  const isCreator = currentUserId != null && task.createdById === currentUserId;
+  const myAssignment = assignments.find((a) => a.userId === currentUserId);
+  const iAmDone = !!myAssignment?.completedAt;
+  const allDone = total > 0 && doneCount === total;
+
+  const toggleAssignee = (id: string) => {
+    const ids = assignments.map((a) => a.userId);
+    const next = ids.includes(id)
+      ? ids.filter((x) => x !== id)
+      : [...ids, id];
+    onAssignees(next);
+  };
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-3 group">
@@ -545,33 +613,123 @@ function TaskCard({
             {formatDue(task.dueAt)}
           </span>
         )}
+        {total > 0 && (
+          <span
+            className={`inline-flex items-center gap-1 text-[11px] rounded-full px-2 py-0.5 ${
+              allDone
+                ? 'bg-green-50 text-green-600'
+                : 'bg-amber-50 text-amber-700'
+            }`}
+          >
+            {allDone ? <Check size={10} /> : <Users size={10} />}
+            {doneCount}/{total} done
+          </span>
+        )}
       </div>
 
-      <div className="flex items-center gap-2 mt-2.5">
-        <select
-          value={task.assigneeId ?? ''}
-          onChange={(e) => onAssignee(e.target.value || null)}
-          className="text-[11px] border border-gray-200 rounded-md px-1.5 py-1 text-gray-600 bg-white focus:outline-none focus:border-amber-500 max-w-[55%]"
+      {/* Assignee avatars — completed assignees get a green ring + check. */}
+      {total > 0 && (
+        <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
+          {assignments.map((a) => {
+            const done = a.completedAt !== null;
+            return (
+              <span
+                key={a.id}
+                title={`${userLabel(a.user)}${done ? ' — done' : ' — pending'}`}
+                className={`relative inline-flex items-center justify-center w-6 h-6 rounded-full text-[9px] font-semibold ${
+                  done
+                    ? 'bg-green-100 text-green-700 ring-1 ring-green-400'
+                    : 'bg-gray-100 text-gray-500'
+                }`}
+              >
+                {userInitials(a.user)}
+                {done && (
+                  <span className="absolute -bottom-0.5 -right-0.5 bg-green-500 text-white rounded-full w-3 h-3 flex items-center justify-center">
+                    <Check size={8} />
+                  </span>
+                )}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Action row */}
+      <div className="flex flex-wrap items-center gap-2 mt-2.5">
+        {myAssignment && (
+          <button
+            onClick={() => onCompletePart(!iAmDone)}
+            className={`inline-flex items-center gap-1 text-[11px] rounded-md px-2 py-1 font-medium ${
+              iAmDone
+                ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                : 'bg-green-500 text-white hover:bg-green-600'
+            }`}
+          >
+            <Check size={11} />
+            {iAmDone ? 'Undo my part' : 'Mark my part done'}
+          </button>
+        )}
+        {isCreator && total > 0 && !allDone && (
+          <button
+            onClick={onForceComplete}
+            className="inline-flex items-center gap-1 text-[11px] rounded-md px-2 py-1 font-medium bg-navy text-white hover:bg-navy-dark"
+          >
+            <Check size={11} />
+            Force complete
+          </button>
+        )}
+        <button
+          onClick={() => setEditAssignees((v) => !v)}
+          className="inline-flex items-center gap-1 text-[11px] rounded-md px-2 py-1 text-gray-500 hover:bg-gray-100 ml-auto"
         >
-          <option value="">Unassigned</option>
-          {people.map((u) => (
-            <option key={u.id} value={u.id}>
-              {userLabel(u)}
-            </option>
-          ))}
-        </select>
-        <select
-          value={task.status}
-          onChange={(e) => onStatus(e.target.value as TaskStatus)}
-          className="text-[11px] border border-gray-200 rounded-md px-1.5 py-1 text-gray-600 bg-white focus:outline-none focus:border-amber-500 ml-auto"
-        >
-          {TASK_COLUMNS.map((c) => (
-            <option key={c.status} value={c.status}>
-              {c.label}
-            </option>
-          ))}
-        </select>
+          <Users size={11} />
+          {total > 0 ? 'Edit' : 'Assign'}
+        </button>
       </div>
+
+      {/* Manual status control only matters for tasks with no assignees. */}
+      {total === 0 && (
+        <div className="flex items-center mt-2.5">
+          <select
+            value={task.status}
+            onChange={(e) => onStatus(e.target.value as TaskStatus)}
+            className="text-[11px] border border-gray-200 rounded-md px-1.5 py-1 text-gray-600 bg-white focus:outline-none focus:border-amber-500 ml-auto"
+          >
+            {TASK_COLUMNS.map((c) => (
+              <option key={c.status} value={c.status}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Inline multi-assignee editor. */}
+      {editAssignees && (
+        <div className="mt-2 border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
+          {people.length === 0 ? (
+            <p className="text-xs text-gray-400 px-3 py-3">No people found.</p>
+          ) : (
+            people.map((u) => {
+              const checked = assignments.some((a) => a.userId === u.id);
+              return (
+                <label
+                  key={u.id}
+                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleAssignee(u.id)}
+                    className="rounded border-gray-300 text-amber-500 focus:ring-amber-200"
+                  />
+                  <span className="text-xs text-gray-700">{userLabel(u)}</span>
+                </label>
+              );
+            })
+          )}
+        </div>
+      )}
     </div>
   );
 }

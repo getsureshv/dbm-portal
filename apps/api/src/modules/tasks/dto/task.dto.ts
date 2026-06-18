@@ -7,6 +7,7 @@ import {
   IsUUID,
   IsEnum,
   IsIn,
+  IsArray,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { TaskStatus } from '@prisma/client';
@@ -31,9 +32,17 @@ export class CreateTaskDto {
   @IsUUID()
   projectId?: string;
 
+  // Legacy single assignee — kept for backward compat. If assigneeIds is
+  // provided it wins; otherwise this is treated as a one-element set.
   @IsOptional()
   @IsUUID()
   assigneeId?: string;
+
+  // Preferred: multiple assignees, each independently completing their part.
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  assigneeIds?: string[];
 }
 
 export class UpdateTaskDto {
@@ -72,6 +81,14 @@ export class UpdateTaskDto {
   @IsUUID()
   @Transform(({ value }) => (value === null || value === '' ? null : value))
   assigneeId?: string | null;
+
+  // Replace the full assignee set. null or [] clears all assignments.
+  // Adding a new assignee to a DONE task reopens it (IN_PROGRESS).
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  @Transform(({ value }) => (value === null ? null : value))
+  assigneeIds?: string[] | null;
 }
 
 export class ConvertMessageToTaskDto {

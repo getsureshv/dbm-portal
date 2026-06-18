@@ -1041,6 +1041,16 @@ export interface ApiTask {
   assignee: { id: string; name: string | null; email: string } | null;
   createdBy: { id: string; name: string | null; email: string } | null;
   project: { id: string; title: string } | null;
+  assignments: ApiTaskAssignment[];
+}
+
+export interface ApiTaskAssignment {
+  id: string;
+  taskId: string;
+  userId: string;
+  completedAt: string | null;
+  createdAt: string;
+  user: { id: string; name: string | null; email: string };
 }
 
 export interface ApiTaskCounts {
@@ -1072,6 +1082,7 @@ export const tasks = {
     dueAt?: string | null;
     projectId?: string | null;
     assigneeId?: string | null;
+    assigneeIds?: string[];
   }) =>
     request<ApiTask>('/tasks', {
       method: 'POST',
@@ -1087,12 +1098,24 @@ export const tasks = {
       dueAt: string | null;
       projectId: string | null;
       assigneeId: string | null;
+      assigneeIds: string[] | null;
     }>,
   ) =>
     request<ApiTask>(`/tasks/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
+
+  // Mark the current user's own part of a task done (or undo with done=false).
+  complete: (id: string, done = true) =>
+    request<ApiTask>(`/tasks/${id}/complete`, {
+      method: 'POST',
+      body: JSON.stringify({ done }),
+    }),
+
+  // Creator-only: force the whole task complete.
+  forceComplete: (id: string) =>
+    request<ApiTask>(`/tasks/${id}/force-complete`, { method: 'POST' }),
 
   remove: (id: string) =>
     request<void>(`/tasks/${id}`, { method: 'DELETE' }),

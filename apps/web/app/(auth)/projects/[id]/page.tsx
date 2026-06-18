@@ -3,9 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronRight, ChevronDown, Loader2, AlertCircle, Pencil, ScanLine, Eye, X, Check, Wand2, Trash2, UserPlus, Mail, Clock, Building2, Globe, Phone, MessageSquare, Send } from 'lucide-react';
+import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronRight, ChevronDown, Loader2, AlertCircle, Pencil, ScanLine, Eye, X, Check, Wand2, Trash2, UserPlus, Mail, Clock, Building2, Globe, Phone, MessageSquare, Send, Bot } from 'lucide-react';
 import { useAuth } from '../../../../lib/auth-context';
-import { projects as projectsApi, uploads as uploadsApi, documents as documentsApi, ApiProject, ApiDocument, ProjectGrant, ApiProjectNote, ApiProjectMessage } from '../../../../lib/api';
+import { projects as projectsApi, uploads as uploadsApi, documents as documentsApi, aiParticipant as aiApi, ApiProject, ApiDocument, ProjectGrant, ApiProjectNote, ApiProjectMessage } from '../../../../lib/api';
 
 type TabType = 'overview' | 'documents' | 'scope' | 'chat' | 'team';
 
@@ -777,11 +777,11 @@ function formatNoteTimestamp(iso: string): string {
   });
 }
 
-function authorLabel(author: ApiProjectNote['author']): string {
+function authorLabel(author: ApiProjectNote['author'] | null): string {
   return author?.name?.trim() || author?.email || 'Unknown user';
 }
 
-function authorInitials(author: ApiProjectNote['author']): string {
+function authorInitials(author: ApiProjectNote['author'] | null): string {
   const label = authorLabel(author);
   const parts = label.split(/[\s@.]+/).filter(Boolean);
   const first = parts[0]?.[0] ?? '?';
@@ -808,6 +808,7 @@ function ProjectChat({
   const [editBody, setEditBody] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [aiThinking, setAiThinking] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const messagesRef = useRef<ApiProjectMessage[]>([]);
@@ -853,6 +854,7 @@ function ProjectChat({
         next[idx] = msg;
         return next;
       });
+      if (msg.isAi) setAiThinking(false);
       setTimeout(() => scrollToBottom(true), 0);
     };
 
@@ -932,6 +934,7 @@ function ProjectChat({
     if (!trimmed || sending) return;
     setSending(true);
     setError(null);
+    const mentionsAi = /@(assistant|ai)\b/i.test(trimmed);
     try {
       const created = await projectsApi.addMessage(projectId, trimmed);
       setMessages((prev) =>
@@ -939,6 +942,19 @@ function ProjectChat({
       );
       setBody('');
       setTimeout(() => scrollToBottom(true), 0);
+      if (mentionsAi) {
+        setAiThinking(true);
+        aiApi
+          .mentionInProject(projectId, trimmed)
+          .then((aiMsg) => {
+            setMessages((prev) =>
+              prev.some((m) => m.id === aiMsg.id) ? prev : [...prev, aiMsg],
+            );
+            setAiThinking(false);
+            setTimeout(() => scrollToBottom(true), 0);
+          })
+          .catch(() => setAiThinking(false));
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to send message');
     } finally {
@@ -1000,28 +1016,40 @@ function ProjectChat({
           <div className="flex flex-col items-center justify-center h-full text-center text-gray-400">
             <MessageSquare size={32} className="mb-2 opacity-40" />
             <p className="text-sm">No messages yet. Start the conversation.</p>
+            <p className="text-xs mt-1">
+              Tip: mention @assistant to bring in the AI.
+            </p>
           </div>
         ) : (
           messages.map((m) => {
-            const isOwn = !!currentUserId && m.author?.id === currentUserId;
+            const isAi = !!m.isAi;
+            const isOwn =
+              !isAi && !!currentUserId && m.author?.id === currentUserId;
             const isEditing = editingId === m.id;
             const wasEdited =
+              !isAi &&
               new Date(m.updatedAt).getTime() - new Date(m.createdAt).getTime() >
-              1000;
+                1000;
             return (
               <div
                 key={m.id}
                 className={`flex gap-3 group ${isOwn ? 'flex-row-reverse' : ''}`}
               >
-                <div className="flex-shrink-0 w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-semibold">
-                  {authorInitials(m.author)}
+                <div
+                  className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold ${
+                    isAi
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
+                  {isAi ? <Bot size={16} /> : authorInitials(m.author)}
                 </div>
                 <div
                   className={`flex flex-col max-w-[75%] ${isOwn ? 'items-end' : 'items-start'}`}
                 >
                   <div className="flex items-baseline gap-2 mb-1">
                     <span className="text-xs font-medium text-gray-700">
-                      {isOwn ? 'You' : authorLabel(m.author)}
+                      {isAi ? 'AI Assistant' : isOwn ? 'You' : authorLabel(m.author)}
                     </span>
                     <span
                       className="text-xs text-gray-400"
@@ -1080,9 +1108,11 @@ function ProjectChat({
                   ) : (
                     <div
                       className={`rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap break-words ${
-                        isOwn
-                          ? 'bg-amber-500 text-white rounded-tr-sm'
-                          : 'bg-gray-100 text-gray-800 rounded-tl-sm'
+                        isAi
+                          ? 'bg-amber-50 text-gray-800 border border-amber-100 rounded-tl-sm'
+                          : isOwn
+                            ? 'bg-amber-500 text-white rounded-tr-sm'
+                            : 'bg-gray-100 text-gray-800 rounded-tl-sm'
                       }`}
                     >
                       {m.body}
@@ -1132,6 +1162,13 @@ function ProjectChat({
             );
           })
         )}
+        {aiThinking && (
+          <div className="flex items-center gap-2 text-gray-400 text-xs">
+            <Bot size={16} className="text-amber-500" />
+            <Loader2 className="animate-spin" size={12} />
+            AI Assistant is thinking…
+          </div>
+        )}
       </div>
 
       {/* Composer */}
@@ -1142,7 +1179,7 @@ function ProjectChat({
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          placeholder="Type a message…"
+          placeholder="Type a message…  Mention @assistant for AI"
           rows={1}
           className="flex-1 bg-white border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 resize-none max-h-32"
           onKeyDown={(e) => {

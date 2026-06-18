@@ -20,19 +20,29 @@ import {
   Plus,
   ArrowLeft,
   LayoutGrid,
-  CheckSquare,
-  Clock,
+  Hash,
+  Lock,
+  AlertCircle,
+  Calendar as CalendarIcon,
+  Compass,
 } from 'lucide-react';
 import { useAuth } from '../../../lib/auth-context';
 import {
   projects as projectsApi,
   dm as dmApi,
+  channels as channelsApi,
+  tasks as tasksApi,
+  aiParticipant as aiApi,
 } from '../../../lib/api';
 import type {
   ApiProject,
   ApiDmThread,
   ApiDmMessage,
   ApiDmUser,
+  ApiChannel,
+  ApiChannelMessage,
+  ApiTask,
+  TaskStatus,
 } from '../../../lib/api';
 
 // ---- small shared helpers --------------------------------------------------
@@ -69,7 +79,14 @@ function userInitials(u: { name?: string | null; email: string } | null): string
 
 // ---- page ------------------------------------------------------------------
 
-type TopTab = 'dms' | 'ai' | 'command';
+type TopTab = 'dms' | 'channels' | 'ai' | 'command';
+
+const TABS: { key: TopTab; label: string; icon: typeof MessageSquare }[] = [
+  { key: 'dms', label: 'Direct Messages', icon: MessageSquare },
+  { key: 'channels', label: 'Channels', icon: Hash },
+  { key: 'ai', label: 'AI Scope Architect', icon: Bot },
+  { key: 'command', label: 'Command Center', icon: LayoutGrid },
+];
 
 export default function ChatPage() {
   const { user } = useAuth();
@@ -80,129 +97,1195 @@ export default function ChatPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
         <p className="text-gray-500 mt-1">
-          Direct messages with your team and AI Scope Architect conversations.
+          Direct messages, channels, AI conversations, and your task command
+          center — all in one place.
         </p>
       </div>
 
       {/* Top tabs */}
-      <div className="flex items-center gap-1 border-b border-gray-200 mb-6">
-        <button
-          onClick={() => setTab('dms')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            tab === 'dms'
-              ? 'border-amber-500 text-amber-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <MessageSquare size={16} />
-          Direct Messages
-        </button>
-        <button
-          onClick={() => setTab('ai')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            tab === 'ai'
-              ? 'border-amber-500 text-amber-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <Bot size={16} />
-          AI Scope Architect
-        </button>
-        <button
-          onClick={() => setTab('command')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            tab === 'command'
-              ? 'border-amber-500 text-amber-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <LayoutGrid size={16} />
-          Command Center
-          <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide bg-gray-100 text-gray-500 rounded-full px-1.5 py-0.5">
-            Soon
-          </span>
-        </button>
+      <div className="flex items-center gap-1 border-b border-gray-200 mb-6 overflow-x-auto">
+        {TABS.map((t) => {
+          const Icon = t.icon;
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
+                active
+                  ? 'border-amber-500 text-amber-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Icon size={16} />
+              {t.label}
+            </button>
+          );
+        })}
       </div>
 
       {tab === 'dms' ? (
         <DirectMessages currentUserId={user?.id ?? null} />
+      ) : tab === 'channels' ? (
+        <Channels currentUserId={user?.id ?? null} />
       ) : tab === 'ai' ? (
         <ScopeLauncher />
       ) : (
-        <CommandCenterPreview />
+        <CommandCenter currentUserId={user?.id ?? null} />
       )}
     </div>
   );
 }
 
-// ---- Command Center (planned — future development) -------------------------
-// Placeholder tab capturing the roadmap for a task-management command center
-// inside the messaging hub. Not yet functional; shown so the direction is
-// visible in-product. See docs/roadmap-command-center.md.
-function CommandCenterPreview() {
-  const planned = [
-    {
-      icon: CheckSquare,
-      title: 'Tasks & assignments',
-      desc: 'Create tasks, assign them to teammates, set due dates, and track status across all your projects in one place.',
-    },
-    {
-      icon: MessageSquare,
-      title: 'Turn messages into tasks',
-      desc: 'Promote any direct message or project comment into a tracked task without leaving the conversation.',
-    },
-    {
-      icon: LayoutGrid,
-      title: 'Unified board',
-      desc: 'A single board / list view across projects — filter by assignee, project, status, or due date.',
-    },
-    {
-      icon: Clock,
-      title: 'Reminders & follow-ups',
-      desc: 'Due-date reminders and nudges surfaced through the notification bell so nothing slips.',
-    },
-  ];
+// ---- Command Center (task management) --------------------------------------
+// A real task board living alongside messages. Lists tasks grouped by status,
+// supports create / assign / due-date / status changes / delete, filters by
+// status & project, and updates in realtime via the tasks SSE stream.
+
+const TASK_COLUMNS: { status: TaskStatus; label: string; accent: string }[] = [
+  { status: 'TODO', label: 'To do', accent: 'bg-gray-400' },
+  { status: 'IN_PROGRESS', label: 'In progress', accent: 'bg-blue-500' },
+  { status: 'DONE', label: 'Done', accent: 'bg-green-500' },
+];
+
+function isOverdue(t: ApiTask): boolean {
+  if (!t.dueAt || t.status === 'DONE') return false;
+  return new Date(t.dueAt).getTime() < Date.now();
+}
+
+function formatDue(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year:
+      new Date(iso).getFullYear() === new Date().getFullYear()
+        ? undefined
+        : 'numeric',
+  });
+}
+
+function CommandCenter({ currentUserId }: { currentUserId: string | null }) {
+  const [allTasks, setAllTasks] = useState<ApiTask[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [projectFilter, setProjectFilter] = useState<string>('');
+  const [mineOnly, setMineOnly] = useState(false);
+  const [people, setPeople] = useState<ApiDmUser[]>([]);
+  const [projectOptions, setProjectOptions] = useState<ApiProject[]>([]);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await tasksApi.list();
+      setAllTasks(data);
+    } catch {
+      // ignore transient
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+    // people directory (for assignee picker) + projects (for project picker)
+    dmApi.directory().then(setPeople).catch(() => {});
+    projectsApi.list().then(setProjectOptions).catch(() => {});
+  }, [load]);
+
+  // Realtime board updates.
+  useEffect(() => {
+    let es: EventSource | null = null;
+    let poll: ReturnType<typeof setInterval> | null = null;
+    const startPolling = () => {
+      if (poll) return;
+      poll = setInterval(load, 15000);
+    };
+    es = tasksApi.stream();
+    if (!es) {
+      startPolling();
+    } else {
+      es.addEventListener('tasks-changed', () => load());
+      es.onmessage = () => load();
+      es.onerror = () => {
+        es?.close();
+        es = null;
+        startPolling();
+      };
+    }
+    return () => {
+      es?.close();
+      if (poll) clearInterval(poll);
+    };
+  }, [load]);
+
+  const filtered = allTasks.filter((t) => {
+    if (projectFilter && t.projectId !== projectFilter) return false;
+    if (mineOnly && t.assigneeId !== currentUserId) return false;
+    return true;
+  });
+
+  const updateStatus = async (task: ApiTask, status: TaskStatus) => {
+    setAllTasks((prev) =>
+      prev.map((t) => (t.id === task.id ? { ...t, status } : t)),
+    );
+    try {
+      await tasksApi.update(task.id, { status });
+    } catch {
+      load();
+    }
+  };
+
+  const updateAssignee = async (task: ApiTask, assigneeId: string | null) => {
+    try {
+      await tasksApi.update(task.id, { assigneeId });
+      load();
+    } catch {
+      // ignore
+    }
+  };
+
+  const remove = async (task: ApiTask) => {
+    setAllTasks((prev) => prev.filter((t) => t.id !== task.id));
+    try {
+      await tasksApi.remove(task.id);
+    } catch {
+      load();
+    }
+  };
 
   return (
     <div>
-      <div className="bg-gradient-to-br from-amber-50 to-white border border-amber-100 rounded-2xl p-8 text-center mb-6">
-        <div className="w-14 h-14 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <LayoutGrid className="text-amber-600" size={26} />
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <button
+          onClick={() => setShowCreate(true)}
+          className="inline-flex items-center gap-1.5 bg-amber-500 text-white px-3.5 py-2 rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors"
+        >
+          <Plus size={16} />
+          New task
+        </button>
+
+        <label className="inline-flex items-center gap-2 text-sm text-gray-600">
+          <input
+            type="checkbox"
+            checked={mineOnly}
+            onChange={(e) => setMineOnly(e.target.checked)}
+            className="rounded border-gray-300 text-amber-500 focus:ring-amber-200"
+          />
+          Assigned to me
+        </label>
+
+        <select
+          value={projectFilter}
+          onChange={(e) => setProjectFilter(e.target.value)}
+          className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-700 bg-white focus:outline-none focus:border-amber-500"
+        >
+          <option value="">All projects</option>
+          {projectOptions.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.title}
+            </option>
+          ))}
+        </select>
+
+        <span className="text-xs text-gray-400 ml-auto">
+          {filtered.length} task{filtered.length === 1 ? '' : 's'}
+        </span>
+      </div>
+
+      {showCreate && (
+        <CreateTaskForm
+          people={people}
+          projects={projectOptions}
+          onClose={() => setShowCreate(false)}
+          onCreated={() => {
+            setShowCreate(false);
+            load();
+          }}
+        />
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="animate-spin text-amber-500" size={28} />
         </div>
-        <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700 rounded-full px-2.5 py-1 mb-3">
-          <Clock size={12} />
-          Coming soon
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {TASK_COLUMNS.map((col) => {
+            const colTasks = filtered.filter((t) => t.status === col.status);
+            return (
+              <div
+                key={col.status}
+                className="bg-gray-50 border border-gray-200 rounded-2xl p-3 flex flex-col min-h-[200px]"
+              >
+                <div className="flex items-center gap-2 px-1 pb-3">
+                  <span className={`w-2 h-2 rounded-full ${col.accent}`} />
+                  <span className="text-sm font-semibold text-gray-700">
+                    {col.label}
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {colTasks.length}
+                  </span>
+                </div>
+                <div className="space-y-2 flex-1">
+                  {colTasks.length === 0 ? (
+                    <p className="text-xs text-gray-400 px-1 py-4 text-center">
+                      No tasks
+                    </p>
+                  ) : (
+                    colTasks.map((t) => (
+                      <TaskCard
+                        key={t.id}
+                        task={t}
+                        people={people}
+                        onStatus={(s) => updateStatus(t, s)}
+                        onAssignee={(a) => updateAssignee(t, a)}
+                        onDelete={() => remove(t)}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
-        <h2 className="text-xl font-bold text-gray-900">Command Center</h2>
-        <p className="text-gray-500 mt-2 max-w-md mx-auto">
-          A task-management hub that lives alongside your messages — manage
-          work, assignments, and follow-ups without leaving the conversation.
+      )}
+    </div>
+  );
+}
+
+function CreateTaskForm({
+  people,
+  projects,
+  onClose,
+  onCreated,
+}: {
+  people: ApiDmUser[];
+  projects: ApiProject[];
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [assigneeId, setAssigneeId] = useState('');
+  const [projectId, setProjectId] = useState('');
+  const [dueAt, setDueAt] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || saving) return;
+    setSaving(true);
+    try {
+      await tasksApi.create({
+        title: title.trim(),
+        description: description.trim() || undefined,
+        assigneeId: assigneeId || null,
+        projectId: projectId || null,
+        dueAt: dueAt ? new Date(dueAt).toISOString() : null,
+      });
+      onCreated();
+    } catch {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={submit}
+      className="bg-white border border-amber-200 rounded-2xl p-4 mb-4 space-y-3"
+    >
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-gray-900">New task</p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"
+          aria-label="Close"
+        >
+          <X size={16} />
+        </button>
+      </div>
+      <input
+        autoFocus
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="Task title"
+        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
+      />
+      <textarea
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder="Description (optional)"
+        rows={2}
+        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
+      />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <select
+          value={assigneeId}
+          onChange={(e) => setAssigneeId(e.target.value)}
+          className="text-sm border border-gray-200 rounded-lg px-2.5 py-2 text-gray-700 bg-white focus:outline-none focus:border-amber-500"
+        >
+          <option value="">Unassigned</option>
+          {people.map((u) => (
+            <option key={u.id} value={u.id}>
+              {userLabel(u)}
+            </option>
+          ))}
+        </select>
+        <select
+          value={projectId}
+          onChange={(e) => setProjectId(e.target.value)}
+          className="text-sm border border-gray-200 rounded-lg px-2.5 py-2 text-gray-700 bg-white focus:outline-none focus:border-amber-500"
+        >
+          <option value="">No project</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.title}
+            </option>
+          ))}
+        </select>
+        <input
+          type="date"
+          value={dueAt}
+          onChange={(e) => setDueAt(e.target.value)}
+          className="text-sm border border-gray-200 rounded-lg px-2.5 py-2 text-gray-700 bg-white focus:outline-none focus:border-amber-500"
+        />
+      </div>
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={!title.trim() || saving}
+          className="inline-flex items-center gap-1.5 bg-amber-500 text-white px-3.5 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} />}
+          Create
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function TaskCard({
+  task,
+  people,
+  onStatus,
+  onAssignee,
+  onDelete,
+}: {
+  task: ApiTask;
+  people: ApiDmUser[];
+  onStatus: (s: TaskStatus) => void;
+  onAssignee: (a: string | null) => void;
+  onDelete: () => void;
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const overdue = isOverdue(task);
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-3 group">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-medium text-gray-900 break-words flex-1">
+          {task.title}
         </p>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {planned.map((item) => (
-          <div
-            key={item.title}
-            className="bg-white border border-gray-200 rounded-xl p-4 flex items-start gap-3"
-          >
-            <div className="w-9 h-9 bg-gray-50 rounded-lg flex items-center justify-center flex-shrink-0">
-              <item.icon className="text-amber-600" size={18} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-900">
-                {item.title}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
-            </div>
+        {confirmDelete ? (
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={onDelete}
+              className="text-[11px] text-red-600 hover:text-red-700 font-medium"
+            >
+              Delete
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="text-[11px] text-gray-400 hover:text-gray-600"
+            >
+              Cancel
+            </button>
           </div>
-        ))}
+        ) : (
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+            aria-label="Delete task"
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
       </div>
 
-      <p className="text-center text-xs text-gray-400 mt-6">
-        On the roadmap. Have ideas for what the Command Center should do? Let us
-        know.
-      </p>
+      {task.description && (
+        <p className="text-xs text-gray-500 mt-1 break-words">
+          {task.description}
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2 mt-2.5">
+        {task.project && (
+          <span className="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">
+            <LayoutGrid size={10} />
+            {task.project.title}
+          </span>
+        )}
+        {task.dueAt && (
+          <span
+            className={`inline-flex items-center gap-1 text-[11px] rounded-full px-2 py-0.5 ${
+              overdue
+                ? 'bg-red-50 text-red-600'
+                : 'bg-gray-100 text-gray-500'
+            }`}
+          >
+            {overdue ? <AlertCircle size={10} /> : <CalendarIcon size={10} />}
+            {formatDue(task.dueAt)}
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 mt-2.5">
+        <select
+          value={task.assigneeId ?? ''}
+          onChange={(e) => onAssignee(e.target.value || null)}
+          className="text-[11px] border border-gray-200 rounded-md px-1.5 py-1 text-gray-600 bg-white focus:outline-none focus:border-amber-500 max-w-[55%]"
+        >
+          <option value="">Unassigned</option>
+          {people.map((u) => (
+            <option key={u.id} value={u.id}>
+              {userLabel(u)}
+            </option>
+          ))}
+        </select>
+        <select
+          value={task.status}
+          onChange={(e) => onStatus(e.target.value as TaskStatus)}
+          className="text-[11px] border border-gray-200 rounded-md px-1.5 py-1 text-gray-600 bg-white focus:outline-none focus:border-amber-500 ml-auto"
+        >
+          {TASK_COLUMNS.map((c) => (
+            <option key={c.status} value={c.status}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+// ---- Channels (v4) ---------------------------------------------------------
+// Group / topic rooms. Left rail lists my channels + a discover view to join
+// public ones and a create form. Right pane is a realtime message thread that
+// supports @assistant / @ai mentions to bring in the AI participant.
+
+function Channels({ currentUserId }: { currentUserId: string | null }) {
+  const [myChannels, setMyChannels] = useState<ApiChannel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [view, setView] = useState<'list' | 'discover' | 'create'>('list');
+
+  const load = useCallback(async () => {
+    try {
+      setMyChannels(await channelsApi.list());
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Realtime inbox refresh.
+  useEffect(() => {
+    let es: EventSource | null = null;
+    let poll: ReturnType<typeof setInterval> | null = null;
+    const startPolling = () => {
+      if (poll) return;
+      poll = setInterval(load, 15000);
+    };
+    es = channelsApi.streamInbox();
+    if (!es) {
+      startPolling();
+    } else {
+      es.addEventListener('inbox', () => load());
+      es.onerror = () => {
+        es?.close();
+        es = null;
+        startPolling();
+      };
+    }
+    return () => {
+      es?.close();
+      if (poll) clearInterval(poll);
+    };
+  }, [load]);
+
+  const active = myChannels.find((c) => c.id === activeId) ?? null;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-4 h-[640px]">
+      {/* Left rail */}
+      <div
+        className={`bg-white border border-gray-200 rounded-2xl flex flex-col overflow-hidden ${
+          activeId && 'hidden md:flex'
+        }`}
+      >
+        <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+          <span className="font-semibold text-gray-900 text-sm">Channels</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setView('discover')}
+              className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700"
+            >
+              <Compass size={14} />
+              Discover
+            </button>
+            <button
+              onClick={() => setView('create')}
+              className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 hover:text-amber-700"
+            >
+              <Plus size={14} />
+              New
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="animate-spin text-amber-500" size={22} />
+            </div>
+          ) : myChannels.length === 0 ? (
+            <div className="px-4 py-10 text-center">
+              <Hash className="text-gray-300 mx-auto mb-2" size={28} />
+              <p className="text-sm text-gray-500">No channels yet.</p>
+              <button
+                onClick={() => setView('create')}
+                className="mt-3 text-sm font-medium text-amber-600 hover:text-amber-700"
+              >
+                Create a channel
+              </button>
+            </div>
+          ) : (
+            myChannels.map((c) => {
+              const isActive = c.id === activeId;
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => {
+                    setActiveId(c.id);
+                    setView('list');
+                  }}
+                  className={`w-full text-left px-3 py-3 flex items-start gap-3 border-b border-gray-50 transition-colors ${
+                    isActive ? 'bg-amber-50' : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0">
+                    {c.isPrivate ? <Lock size={16} /> : <Hash size={16} />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-gray-900 text-sm truncate">
+                        {c.name}
+                      </span>
+                      {c.lastMessage && (
+                        <span className="text-[11px] text-gray-400 flex-shrink-0">
+                          {formatTimestamp(c.lastMessage.createdAt)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between gap-2 mt-0.5">
+                      <span className="text-xs text-gray-500 truncate">
+                        {c.lastMessage
+                          ? (c.lastMessage.isAi ? 'AI: ' : '') +
+                            c.lastMessage.body
+                          : c.description || 'No messages yet'}
+                      </span>
+                      {(c.unreadCount ?? 0) > 0 && (
+                        <span className="flex-shrink-0 min-w-[18px] h-[18px] px-1.5 rounded-full bg-amber-500 text-white text-[11px] font-semibold flex items-center justify-center">
+                          {c.unreadCount}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* Right pane */}
+      <div
+        className={`bg-white border border-gray-200 rounded-2xl flex flex-col overflow-hidden ${
+          !activeId && view === 'list' && 'hidden md:flex'
+        }`}
+      >
+        {view === 'create' ? (
+          <CreateChannelForm
+            onCancel={() => setView('list')}
+            onCreated={(ch) => {
+              setMyChannels((prev) =>
+                prev.some((c) => c.id === ch.id) ? prev : [ch, ...prev],
+              );
+              setActiveId(ch.id);
+              setView('list');
+              load();
+            }}
+          />
+        ) : view === 'discover' ? (
+          <DiscoverChannels
+            myIds={myChannels.map((c) => c.id)}
+            onCancel={() => setView('list')}
+            onJoined={(ch) => {
+              setMyChannels((prev) =>
+                prev.some((c) => c.id === ch.id) ? prev : [ch, ...prev],
+              );
+              setActiveId(ch.id);
+              setView('list');
+              load();
+            }}
+          />
+        ) : active ? (
+          <ChannelView
+            key={active.id}
+            channel={active}
+            currentUserId={currentUserId}
+            onBack={() => setActiveId(null)}
+            onActivity={load}
+          />
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+            <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center mb-3">
+              <Hash className="text-amber-500" size={26} />
+            </div>
+            <p className="text-gray-900 font-medium">Select a channel</p>
+            <p className="text-gray-500 text-sm mt-1 max-w-xs">
+              Pick a channel from the list, discover public ones to join, or
+              create a new one. Mention @assistant in any channel to bring in
+              the AI.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CreateChannelForm({
+  onCancel,
+  onCreated,
+}: {
+  onCancel: () => void;
+  onCreated: (ch: ApiChannel) => void;
+}) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [people, setPeople] = useState<ApiDmUser[]>([]);
+  const [memberIds, setMemberIds] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    dmApi.directory().then(setPeople).catch(() => {});
+  }, []);
+
+  const toggleMember = (id: string) => {
+    setMemberIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    try {
+      const ch = await channelsApi.create({
+        name: name.trim(),
+        description: description.trim() || undefined,
+        isPrivate,
+        memberIds: memberIds.length ? memberIds : undefined,
+      });
+      onCreated(ch);
+    } catch {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="flex flex-col h-full">
+      <div className="p-3 border-b border-gray-100 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
+          aria-label="Cancel"
+        >
+          <X size={16} />
+        </button>
+        <span className="font-semibold text-gray-900 text-sm">New channel</span>
+      </div>
+      <div className="p-4 space-y-3 flex-1 overflow-y-auto">
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Channel name (e.g. design, permits-team)"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
+        />
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Description (optional)"
+          rows={2}
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
+        />
+        <label className="inline-flex items-center gap-2 text-sm text-gray-600">
+          <input
+            type="checkbox"
+            checked={isPrivate}
+            onChange={(e) => setIsPrivate(e.target.checked)}
+            className="rounded border-gray-300 text-amber-500 focus:ring-amber-200"
+          />
+          Private channel (invite only)
+        </label>
+
+        <div>
+          <p className="text-xs font-medium text-gray-500 mb-2">
+            Add members (optional)
+          </p>
+          <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto">
+            {people.length === 0 ? (
+              <p className="text-xs text-gray-400 px-3 py-3">No people found.</p>
+            ) : (
+              people.map((u) => (
+                <label
+                  key={u.id}
+                  className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
+                >
+                  <input
+                    type="checkbox"
+                    checked={memberIds.includes(u.id)}
+                    onChange={() => toggleMember(u.id)}
+                    className="rounded border-gray-300 text-amber-500 focus:ring-amber-200"
+                  />
+                  <span className="text-sm text-gray-700">{userLabel(u)}</span>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="p-3 border-t border-gray-100 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={!name.trim() || saving}
+          className="inline-flex items-center gap-1.5 bg-amber-500 text-white px-3.5 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} />}
+          Create
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function DiscoverChannels({
+  myIds,
+  onCancel,
+  onJoined,
+}: {
+  myIds: string[];
+  onCancel: () => void;
+  onJoined: (ch: ApiChannel) => void;
+}) {
+  const [list, setList] = useState<ApiChannel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [joining, setJoining] = useState<string | null>(null);
+
+  useEffect(() => {
+    channelsApi
+      .discover()
+      .then(setList)
+      .catch(() => setList([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const join = async (id: string) => {
+    setJoining(id);
+    try {
+      const ch = await channelsApi.join(id);
+      onJoined(ch);
+    } catch {
+      setJoining(null);
+    }
+  };
+
+  const available = list.filter((c) => !myIds.includes(c.id));
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="p-3 border-b border-gray-100 flex items-center gap-2">
+        <button
+          onClick={onCancel}
+          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
+          aria-label="Cancel"
+        >
+          <X size={16} />
+        </button>
+        <span className="font-semibold text-gray-900 text-sm">
+          Discover channels
+        </span>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="animate-spin text-amber-500" size={20} />
+          </div>
+        ) : available.length === 0 ? (
+          <p className="text-center text-sm text-gray-500 py-12">
+            No public channels to join right now.
+          </p>
+        ) : (
+          available.map((c) => (
+            <div
+              key={c.id}
+              className="px-3 py-3 flex items-center gap-3 border-b border-gray-50"
+            >
+              <div className="w-9 h-9 rounded-lg bg-gray-100 text-gray-600 flex items-center justify-center flex-shrink-0">
+                <Hash size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {c.name}
+                </p>
+                <p className="text-xs text-gray-400 truncate">
+                  {c.description ||
+                    `${c.memberCount ?? 0} member${
+                      (c.memberCount ?? 0) === 1 ? '' : 's'
+                    }`}
+                </p>
+              </div>
+              <button
+                onClick={() => join(c.id)}
+                disabled={joining === c.id}
+                className="text-xs font-medium text-amber-600 hover:text-amber-700 disabled:opacity-50 flex items-center gap-1"
+              >
+                {joining === c.id ? (
+                  <Loader2 className="animate-spin" size={14} />
+                ) : (
+                  <Plus size={14} />
+                )}
+                Join
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChannelView({
+  channel,
+  currentUserId,
+  onBack,
+  onActivity,
+}: {
+  channel: ApiChannel;
+  currentUserId: string | null;
+  onBack: () => void;
+  onActivity: () => void;
+}) {
+  const channelId = channel.id;
+  const [messages, setMessages] = useState<ApiChannelMessage[]>([]);
+  const messagesRef = useRef<ApiChannelMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const [aiThinking, setAiThinking] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  messagesRef.current = messages;
+
+  const scrollToBottom = (smooth = false) => {
+    const el = scrollRef.current;
+    if (el)
+      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+  };
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    (async () => {
+      try {
+        const data = await channelsApi.listMessages(channelId);
+        if (!active) return;
+        setMessages(data);
+        setTimeout(() => scrollToBottom(false), 0);
+        await channelsApi.markRead(channelId);
+        onActivity();
+      } catch {
+        // ignore
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelId]);
+
+  useEffect(() => {
+    let es: EventSource | null = null;
+    let poll: ReturnType<typeof setInterval> | null = null;
+
+    const apply = (msg: ApiChannelMessage) => {
+      setMessages((prev) => {
+        const idx = prev.findIndex((m) => m.id === msg.id);
+        if (idx === -1) return [...prev, msg];
+        const next = [...prev];
+        next[idx] = msg;
+        return next;
+      });
+      if (msg.isAi) setAiThinking(false);
+      setTimeout(() => scrollToBottom(true), 0);
+      channelsApi.markRead(channelId).then(onActivity).catch(() => {});
+    };
+
+    const startPolling = () => {
+      if (poll) return;
+      poll = setInterval(async () => {
+        const cur = messagesRef.current;
+        const lastId = cur.length ? cur[cur.length - 1].id : undefined;
+        try {
+          const fresh = await channelsApi.listMessages(channelId, lastId);
+          if (fresh.length > 0) {
+            setMessages((prev) => {
+              const seen = new Set(prev.map((m) => m.id));
+              return [...prev, ...fresh.filter((m) => !seen.has(m.id))];
+            });
+            if (fresh.some((m) => m.isAi)) setAiThinking(false);
+            setTimeout(() => scrollToBottom(true), 0);
+            channelsApi.markRead(channelId).then(onActivity).catch(() => {});
+          }
+        } catch {
+          // transient
+        }
+      }, 5000);
+    };
+
+    es = channelsApi.streamChannel(channelId);
+    if (!es) {
+      startPolling();
+    } else {
+      const handle = (e: Event) => {
+        try {
+          const data = JSON.parse((e as MessageEvent).data);
+          if (data?.message) apply(data.message);
+        } catch {
+          /* ignore */
+        }
+      };
+      es.addEventListener('created', handle);
+      es.addEventListener('updated', handle);
+      es.addEventListener('deleted', (e) => {
+        try {
+          const data = JSON.parse((e as MessageEvent).data);
+          if (data?.messageId) {
+            setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
+          }
+        } catch {
+          /* ignore */
+        }
+      });
+      es.onerror = () => {
+        es?.close();
+        es = null;
+        startPolling();
+      };
+    }
+    return () => {
+      es?.close();
+      if (poll) clearInterval(poll);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelId]);
+
+  const send = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const body = draft.trim();
+    if (!body || sending) return;
+    setSending(true);
+    setDraft('');
+    const mentionsAi = /@(assistant|ai)\b/i.test(body);
+    try {
+      const created = await channelsApi.addMessage(channelId, body);
+      setMessages((prev) =>
+        prev.some((m) => m.id === created.id) ? prev : [...prev, created],
+      );
+      setTimeout(() => scrollToBottom(true), 0);
+      onActivity();
+      if (mentionsAi) {
+        setAiThinking(true);
+        aiApi
+          .mentionInChannel(channelId, body)
+          .then((aiMsg) => {
+            setMessages((prev) =>
+              prev.some((m) => m.id === aiMsg.id) ? prev : [...prev, aiMsg],
+            );
+            setAiThinking(false);
+            setTimeout(() => scrollToBottom(true), 0);
+          })
+          .catch(() => setAiThinking(false));
+      }
+    } catch {
+      setDraft(body);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="p-3 border-b border-gray-100 flex items-center gap-3">
+        <button
+          onClick={onBack}
+          className="md:hidden p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
+          aria-label="Back"
+        >
+          <ArrowLeft size={18} />
+        </button>
+        <div className="w-9 h-9 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+          {channel.isPrivate ? <Lock size={16} /> : <Hash size={16} />}
+        </div>
+        <div className="min-w-0">
+          <p className="font-semibold text-gray-900 text-sm truncate">
+            {channel.name}
+          </p>
+          {channel.description && (
+            <p className="text-xs text-gray-400 truncate">
+              {channel.description}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="animate-spin text-amber-500" size={22} />
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <Hash className="text-gray-300 mb-2" size={28} />
+            <p className="text-sm text-gray-500">
+              This is the start of #{channel.name}. Say hello — or mention
+              @assistant to bring in the AI.
+            </p>
+          </div>
+        ) : (
+          messages.map((m) => {
+            const own = !m.isAi && m.authorId === currentUserId;
+            return (
+              <div
+                key={m.id}
+                className={`flex items-end gap-2 ${
+                  own ? 'flex-row-reverse' : 'flex-row'
+                }`}
+              >
+                <div
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0 ${
+                    m.isAi
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {m.isAi ? <Bot size={14} /> : userInitials(m.author)}
+                </div>
+                <div
+                  className={`max-w-[75%] ${
+                    own ? 'items-end' : 'items-start'
+                  } flex flex-col`}
+                >
+                  {!own && (
+                    <span className="text-[11px] text-gray-400 px-1 mb-0.5">
+                      {m.isAi ? 'AI Assistant' : userLabel(m.author)}
+                    </span>
+                  )}
+                  <div
+                    className={`rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words ${
+                      m.isAi
+                        ? 'bg-amber-50 text-gray-900 border border-amber-100 rounded-bl-sm'
+                        : own
+                          ? 'bg-amber-500 text-white rounded-br-sm'
+                          : 'bg-gray-100 text-gray-900 rounded-bl-sm'
+                    }`}
+                  >
+                    {m.body}
+                  </div>
+                  <span className="text-[11px] text-gray-400 mt-1 px-1">
+                    {formatTimestamp(m.createdAt)}
+                  </span>
+                </div>
+              </div>
+            );
+          })
+        )}
+        {aiThinking && (
+          <div className="flex items-center gap-2 text-gray-400 text-xs px-1">
+            <Bot size={14} className="text-amber-500" />
+            <Loader2 className="animate-spin" size={12} />
+            AI Assistant is thinking…
+          </div>
+        )}
+      </div>
+
+      <form
+        onSubmit={send}
+        className="p-3 border-t border-gray-100 flex items-end gap-2"
+      >
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              send(e);
+            }
+          }}
+          rows={1}
+          placeholder={`Message #${channel.name}  \u2014  @assistant for AI`}
+          className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 max-h-32"
+        />
+        <button
+          type="submit"
+          disabled={!draft.trim() || sending}
+          className="bg-amber-500 text-white rounded-xl p-2.5 hover:bg-amber-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          aria-label="Send"
+        >
+          {sending ? (
+            <Loader2 className="animate-spin" size={18} />
+          ) : (
+            <Send size={18} />
+          )}
+        </button>
+      </form>
     </div>
   );
 }

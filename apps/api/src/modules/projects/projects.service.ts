@@ -510,6 +510,21 @@ export class ProjectsService {
     return message;
   }
 
+  // Post an AI-participant reply into a project chat thread. No human author
+  // (authorId null, isAi true). Used by the AI module when someone @mentions
+  // the assistant. Does not enforce caller access — the caller (AI module) has
+  // already validated the triggering human message.
+  async addAiMessage(projectId: string, body: string) {
+    const message = await this.prisma.projectMessage.create({
+      data: { projectId, authorId: null, isAi: true, body },
+      include: {
+        author: { select: { id: true, name: true, email: true } },
+      },
+    });
+    this.publishChatEvent(projectId, { type: 'created', message });
+    return message;
+  }
+
   // Load a message and confirm it belongs to the project and the caller authored
   // it. Only the author may edit or delete their own message.
   private async getOwnMessageOrThrow(

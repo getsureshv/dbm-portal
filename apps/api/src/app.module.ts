@@ -13,6 +13,9 @@ import { DocumentsModule } from './modules/documents/documents.module';
 import { JurisdictionsModule } from './modules/jurisdictions/jurisdictions.module';
 import { AccessModule } from './modules/access/access.module';
 import { DmModule } from './modules/dm/dm.module';
+import { ChannelsModule } from './modules/channels/channels.module';
+import { TasksModule } from './modules/tasks/tasks.module';
+import { AiParticipantModule } from './modules/ai-participant/ai-participant.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -37,6 +40,9 @@ import { HealthController } from './health.controller';
     JurisdictionsModule,
     AccessModule,
     DmModule,
+    ChannelsModule,
+    TasksModule,
+    AiParticipantModule,
   ],
   controllers: [HealthController],
 })

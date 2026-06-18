@@ -145,6 +145,11 @@ model User {
   directThreadsAsA    DirectThread[]     @relation("DirectThreadUserA")
   directThreadsAsB    DirectThread[]     @relation("DirectThreadUserB")
   directMessages      DirectMessage[]
+  channelsCreated     Channel[]          @relation("ChannelCreatedBy")
+  channelMemberships  ChannelMember[]
+  channelMessages     ChannelMessage[]
+  tasksAssigned       Task[]             @relation("TaskAssignee")
+  tasksCreated        Task[]             @relation("TaskCreatedBy")
 
   @@map("users")
 }
@@ -312,6 +317,7 @@ model Project {
   companies       ProjectCompany[]
   notes           ProjectNote[]
   messages        ProjectMessage[]
+  tasks           Task[]
   scopeDocument   ScopeDocument?
   // Phase 5+ stubs
   invoices        Invoice[]
@@ -384,13 +390,16 @@ model ProjectNote {
 model ProjectMessage {
   id        String   @id @default(uuid()) @db.Uuid
   projectId String   @map("project_id") @db.Uuid
-  authorId  String   @map("author_id") @db.Uuid
+  // authorId is nullable so AI-participant replies can be stored as messages
+  // without a human author (isAi = true in that case).
+  authorId  String?  @map("author_id") @db.Uuid
+  isAi      Boolean  @default(false) @map("is_ai")
   body      String
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  author    User     @relation(fields: [authorId], references: [id])
+  author    User?    @relation(fields: [authorId], references: [id])
 
   @@index([projectId])
   @@index([authorId])
@@ -435,6 +444,96 @@ model DirectMessage {
   @@index([threadId])
   @@index([senderId])
   @@map("direct_messages")
+}
+
+// ---- Channels (v4: group / topic rooms) -----------------------------------
+
+model Channel {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  isPrivate   Boolean  @default(false) @map("is_private")
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  createdBy User             @relation("ChannelCreatedBy", fields: [createdById], references: [id])
+  members   ChannelMember[]
+  messages  ChannelMessage[]
+
+  @@index([createdById])
+  @@map("channels")
+}
+
+model ChannelMember {
+  id         String    @id @default(uuid()) @db.Uuid
+  channelId  String    @map("channel_id") @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  lastReadAt DateTime? @map("last_read_at")
+  joinedAt   DateTime  @default(now()) @map("joined_at")
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+  @@index([channelId])
+  @@index([userId])
+  @@map("channel_members")
+}
+
+model ChannelMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  channelId String   @map("channel_id") @db.Uuid
+  // Nullable so AI-participant replies can be stored without a human author.
+  authorId  String?  @map("author_id") @db.Uuid
+  isAi      Boolean  @default(false) @map("is_ai")
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author  User?   @relation(fields: [authorId], references: [id])
+
+  @@index([channelId])
+  @@index([authorId])
+  @@map("channel_messages")
+}
+
+// ---- Command Center (task management) -------------------------------------
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+model Task {
+  id          String     @id @default(uuid()) @db.Uuid
+  title       String
+  description String?
+  status      TaskStatus @default(TODO)
+  dueAt       DateTime?  @map("due_at")
+  // Optional link to a project for project-scoped tasks.
+  projectId   String?    @map("project_id") @db.Uuid
+  assigneeId  String?    @map("assignee_id") @db.Uuid
+  createdById String     @map("created_by_id") @db.Uuid
+  // Provenance when a task was created from a message ("convert to task").
+  sourceType  String?    @map("source_type")
+  sourceId    String?    @map("source_id") @db.Uuid
+  completedAt DateTime?  @map("completed_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  assignee  User?    @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  createdBy User     @relation("TaskCreatedBy", fields: [createdById], references: [id])
+
+  @@index([assigneeId])
+  @@index([createdById])
+  @@index([projectId])
+  @@index([status])
+  @@index([dueAt])
+  @@map("tasks")
 }
 
 model ProjectDocument {

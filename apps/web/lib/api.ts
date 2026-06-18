@@ -124,11 +124,13 @@ export interface ApiProject {
 export interface ApiProjectMessage {
   id: string;
   projectId: string;
-  authorId: string;
+  // Nullable for AI-participant replies (isAi = true).
+  authorId: string | null;
+  isAi?: boolean;
   body: string;
   createdAt: string;
   updatedAt: string;
-  author: { id: string; name: string | null; email: string };
+  author: { id: string; name: string | null; email: string } | null;
 }
 
 // A note/comment on a project, captured with its author and timestamp.
@@ -1016,4 +1018,233 @@ export const dm = {
     const qs = token ? `?token=${encodeURIComponent(token)}` : '';
     return new EventSource(`${BASE}/dm/inbox/stream${qs}`);
   },
+};
+
+// ---- Command Center: Tasks -------------------------------------------------
+
+export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'DONE';
+
+export interface ApiTask {
+  id: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  dueAt: string | null;
+  projectId: string | null;
+  assigneeId: string | null;
+  createdById: string;
+  sourceType: string | null;
+  sourceId: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assignee: { id: string; name: string | null; email: string } | null;
+  createdBy: { id: string; name: string | null; email: string } | null;
+  project: { id: string; title: string } | null;
+}
+
+export interface ApiTaskCounts {
+  assignedOpen: number;
+  overdue: number;
+}
+
+export const tasks = {
+  list: (filters?: {
+    status?: TaskStatus;
+    assigneeId?: string;
+    projectId?: string;
+  }) => {
+    const qs = new URLSearchParams();
+    if (filters?.status) qs.set('status', filters.status);
+    if (filters?.assigneeId) qs.set('assigneeId', filters.assigneeId);
+    if (filters?.projectId) qs.set('projectId', filters.projectId);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request<ApiTask[]>(`/tasks${suffix}`);
+  },
+
+  counts: () => request<ApiTaskCounts>('/tasks/counts'),
+
+  get: (id: string) => request<ApiTask>(`/tasks/${id}`),
+
+  create: (data: {
+    title: string;
+    description?: string;
+    dueAt?: string | null;
+    projectId?: string | null;
+    assigneeId?: string | null;
+  }) =>
+    request<ApiTask>('/tasks', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (
+    id: string,
+    data: Partial<{
+      title: string;
+      description: string | null;
+      status: TaskStatus;
+      dueAt: string | null;
+      projectId: string | null;
+      assigneeId: string | null;
+    }>,
+  ) =>
+    request<ApiTask>(`/tasks/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  remove: (id: string) =>
+    request<void>(`/tasks/${id}`, { method: 'DELETE' }),
+
+  convertFromMessage: (data: {
+    sourceType: 'project_message' | 'direct_message' | 'channel_message';
+    sourceId: string;
+    title?: string;
+  }) =>
+    request<ApiTask>('/tasks/convert', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Realtime board updates for the current user.
+  stream: (): EventSource | null => {
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
+      return null;
+    }
+    const token = getSessionToken();
+    const qs = token ? `?token=${encodeURIComponent(token)}` : '';
+    return new EventSource(`${BASE}/tasks/stream${qs}`);
+  },
+};
+
+// ---- v4 Channels -----------------------------------------------------------
+
+export interface ApiChannelMemberUser {
+  id: string;
+  name: string | null;
+  email: string;
+}
+
+export interface ApiChannelMessage {
+  id: string;
+  channelId: string;
+  authorId: string | null;
+  isAi: boolean;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  author: { id: string; name: string | null; email: string } | null;
+}
+
+export interface ApiChannel {
+  id: string;
+  name: string;
+  description: string | null;
+  isPrivate: boolean;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  memberCount?: number;
+  unreadCount?: number;
+  lastMessage?: {
+    id: string;
+    body: string;
+    authorId: string | null;
+    isAi: boolean;
+    createdAt: string;
+  } | null;
+  members?: { user: ApiChannelMemberUser }[];
+}
+
+export const channels = {
+  list: () => request<ApiChannel[]>('/channels'),
+  discover: () => request<ApiChannel[]>('/channels/discover'),
+
+  create: (data: {
+    name: string;
+    description?: string;
+    isPrivate?: boolean;
+    memberIds?: string[];
+  }) =>
+    request<ApiChannel>('/channels', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  get: (id: string) => request<ApiChannel>(`/channels/${id}`),
+
+  listMessages: (id: string, after?: string) => {
+    const qs = after ? `?after=${encodeURIComponent(after)}` : '';
+    return request<ApiChannelMessage[]>(`/channels/${id}/messages${qs}`);
+  },
+
+  addMessage: (id: string, body: string) =>
+    request<ApiChannelMessage>(`/channels/${id}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }),
+
+  updateMessage: (id: string, messageId: string, body: string) =>
+    request<ApiChannelMessage>(`/channels/${id}/messages/${messageId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ body }),
+    }),
+
+  deleteMessage: (id: string, messageId: string) =>
+    request<void>(`/channels/${id}/messages/${messageId}`, {
+      method: 'DELETE',
+    }),
+
+  markRead: (id: string) =>
+    request<{ ok: boolean }>(`/channels/${id}/read`, { method: 'POST' }),
+
+  join: (id: string) =>
+    request<ApiChannel>(`/channels/${id}/join`, { method: 'POST' }),
+
+  leave: (id: string) =>
+    request<{ ok: boolean }>(`/channels/${id}/leave`, { method: 'POST' }),
+
+  addMembers: (id: string, userIds: string[]) =>
+    request<ApiChannel>(`/channels/${id}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ userIds }),
+    }),
+
+  streamChannel: (id: string): EventSource | null => {
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
+      return null;
+    }
+    const token = getSessionToken();
+    const qs = token ? `?token=${encodeURIComponent(token)}` : '';
+    return new EventSource(`${BASE}/channels/${id}/stream${qs}`);
+  },
+
+  streamInbox: (): EventSource | null => {
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
+      return null;
+    }
+    const token = getSessionToken();
+    const qs = token ? `?token=${encodeURIComponent(token)}` : '';
+    return new EventSource(`${BASE}/channels/inbox/stream${qs}`);
+  },
+};
+
+// ---- v5 AI participant (@mention the assistant) ----------------------------
+// The AI reply is broadcast through the project's / channel's existing SSE
+// stream (it arrives as a normal message with isAi=true). These calls just
+// trigger the assistant and return the created AI message.
+
+export const aiParticipant = {
+  mentionInProject: (projectId: string, prompt: string) =>
+    request<ApiProjectMessage>(`/ai/projects/${projectId}/mention`, {
+      method: 'POST',
+      body: JSON.stringify({ prompt }),
+    }),
+
+  mentionInChannel: (channelId: string, prompt: string) =>
+    request<ApiChannelMessage>(`/ai/channels/${channelId}/mention`, {
+      method: 'POST',
+      body: JSON.stringify({ prompt }),
+    }),
 };

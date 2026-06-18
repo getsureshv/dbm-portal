@@ -10,7 +10,6 @@ import {
   Building2,
   Search,
   Briefcase,
-  Bell,
   ChevronDown,
   Scale,
   Menu,
@@ -27,6 +26,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../lib/auth-context';
+import NotificationBell from './notification-bell';
 
 export default function AuthLayout({
   children,
@@ -330,12 +330,8 @@ export default function AuthLayout({
 
           {/* Right: notifications + user avatar */}
           <div className="flex items-center gap-3">
-            {/* Notification bell */}
-            <button className="relative p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
-              <Bell size={20} />
-              {/* Notification dot */}
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-500 rounded-full" />
-            </button>
+            {/* Notification bell — live unread direct-message count */}
+            <NotificationBell />
 
             {/* Divider */}
             <div className="w-px h-6 bg-gray-200" />

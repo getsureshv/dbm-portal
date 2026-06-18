@@ -18,12 +18,62 @@ import type { ScopeFilterDescriptor } from '../access/engine/permission-engine';
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Realtime chat event pushed to SSE subscribers of a project thread.
+export type ChatEvent =
+  | { type: 'created'; message: any }
+  | { type: 'updated'; message: any }
+  | { type: 'deleted'; messageId: string };
+
+type ChatSubscriber = (event: ChatEvent) => void;
+
 @Injectable()
 export class ProjectsService {
+  // In-process pub/sub for realtime chat. Keyed by projectId → set of live SSE
+  // subscriber callbacks. This lives in memory on a single instance, which is
+  // fine at current scale (one Render web instance). If we ever scale to
+  // multiple instances, this needs a shared bus (Redis pub/sub) — same caveat
+  // as other in-memory state in this service. Polling fallback on the client
+  // keeps multi-instance correct even today, just less instant.
+  private chatSubscribers = new Map<string, Set<ChatSubscriber>>();
+
   constructor(
     private prisma: PrismaService,
     private permissions: PermissionsService,
   ) {}
+
+  // Subscribe to realtime chat events for a project. Returns an unsubscribe fn
+  // the caller MUST invoke on disconnect to avoid leaking subscribers.
+  subscribeToChat(projectId: string, subscriber: ChatSubscriber): () => void {
+    let set = this.chatSubscribers.get(projectId);
+    if (!set) {
+      set = new Set();
+      this.chatSubscribers.set(projectId, set);
+    }
+    set.add(subscriber);
+
+    return () => {
+      const current = this.chatSubscribers.get(projectId);
+      if (!current) return;
+      current.delete(subscriber);
+      if (current.size === 0) {
+        this.chatSubscribers.delete(projectId);
+      }
+    };
+  }
+
+  // Fan a chat event out to every live subscriber of the project. A throwing
+  // subscriber (e.g. a dead socket) must never break the others or the caller.
+  private publishChatEvent(projectId: string, event: ChatEvent) {
+    const set = this.chatSubscribers.get(projectId);
+    if (!set || set.size === 0) return;
+    for (const subscriber of set) {
+      try {
+        subscriber(event);
+      } catch {
+        // ignore broken subscriber; it will be cleaned up on disconnect
+      }
+    }
+  }
 
   private validateUuid(id: string) {
     if (!UUID_REGEX.test(id)) {
@@ -449,12 +499,15 @@ export class ProjectsService {
   async addMessage(projectId: string, userId: string, body: string) {
     await this.getProject(projectId, userId, 'update');
 
-    return this.prisma.projectMessage.create({
+    const message = await this.prisma.projectMessage.create({
       data: { projectId, authorId: userId, body },
       include: {
         author: { select: { id: true, name: true, email: true } },
       },
     });
+
+    this.publishChatEvent(projectId, { type: 'created', message });
+    return message;
   }
 
   // Load a message and confirm it belongs to the project and the caller authored
@@ -489,13 +542,16 @@ export class ProjectsService {
     await this.getProject(projectId, userId, 'read');
     await this.getOwnMessageOrThrow(projectId, messageId, userId);
 
-    return this.prisma.projectMessage.update({
+    const message = await this.prisma.projectMessage.update({
       where: { id: messageId },
       data: { body },
       include: {
         author: { select: { id: true, name: true, email: true } },
       },
     });
+
+    this.publishChatEvent(projectId, { type: 'updated', message });
+    return message;
   }
 
   // Delete a message. Author-only.
@@ -504,5 +560,6 @@ export class ProjectsService {
     await this.getOwnMessageOrThrow(projectId, messageId, userId);
 
     await this.prisma.projectMessage.delete({ where: { id: messageId } });
+    this.publishChatEvent(projectId, { type: 'deleted', messageId });
   }
 }

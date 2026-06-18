@@ -175,6 +175,55 @@ export class ProjectsController {
     return this.projectsService.listMessages(id, userId, after);
   }
 
+  // Realtime chat via Server-Sent Events. The browser EventSource cannot set an
+  // Authorization header, so auth comes from a `?token=<jwt>` query param which
+  // the AuthGuard now also accepts; the PermissionGuard still enforces read
+  // access on this specific project record. We keep the connection open and
+  // push `created` / `updated` / `deleted` events as messages change, plus a
+  // periodic heartbeat comment so proxies don't time out the idle stream.
+  @Get(':id/messages/stream')
+  @RequirePermission('read', 'project')
+  @ApiOperation({ summary: 'Subscribe to a project chat thread via SSE' })
+  async streamMessages(
+    @Req() req: any,
+    @Res() res: Response,
+    @Param('id') id: string,
+  ) {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    // Flush headers immediately so the client's EventSource opens right away.
+    res.flushHeaders?.();
+
+    const send = (event: string, data: unknown) => {
+      res.write(`event: ${event}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    // Tell the client we're live; it can clear any "connecting" state.
+    send('ready', { ok: true });
+
+    const unsubscribe = this.projectsService.subscribeToChat(id, (chatEvent) => {
+      send(chatEvent.type, chatEvent);
+    });
+
+    // Heartbeat comment every 25s keeps the connection alive through proxies
+    // (Render / *.pplx.app) that drop idle streams. Comments start with ':'.
+    const heartbeat = setInterval(() => {
+      res.write(': ping\n\n');
+    }, 25000);
+
+    const cleanup = () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    };
+    req.on('close', cleanup);
+    res.on('error', cleanup);
+  }
+
   @Post(':id/messages')
   @RequirePermission('update', 'project')
   @ApiOperation({ summary: 'Post a message to a project chat' })

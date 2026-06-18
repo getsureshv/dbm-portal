@@ -837,26 +837,93 @@ function ProjectChat({
     };
   }, [projectId]);
 
-  // Poll for new messages every 5s using the last message id as a cursor.
+  // Realtime updates. Preferred path is a Server-Sent Events stream that pushes
+  // created/updated/deleted events instantly. If SSE is unavailable or errors
+  // (older browsers, flaky proxies), we fall back to 5s cursor polling so the
+  // thread still updates — just not instantly. Only one mechanism runs at a time.
   useEffect(() => {
-    const interval = setInterval(async () => {
-      const current = messagesRef.current;
-      const lastId = current.length ? current[current.length - 1].id : undefined;
-      try {
-        const fresh = await projectsApi.listMessages(projectId, lastId);
-        if (fresh.length > 0) {
-          setMessages((prev) => {
-            const seen = new Set(prev.map((m) => m.id));
-            const merged = [...prev, ...fresh.filter((m) => !seen.has(m.id))];
-            return merged;
-          });
-          setTimeout(() => scrollToBottom(true), 0);
+    let es: EventSource | null = null;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+    const applyCreatedOrUpdated = (msg: ApiProjectMessage) => {
+      setMessages((prev) => {
+        const idx = prev.findIndex((m) => m.id === msg.id);
+        if (idx === -1) return [...prev, msg];
+        const next = [...prev];
+        next[idx] = msg;
+        return next;
+      });
+      setTimeout(() => scrollToBottom(true), 0);
+    };
+
+    const startPolling = () => {
+      if (pollInterval) return;
+      pollInterval = setInterval(async () => {
+        const current = messagesRef.current;
+        const lastId = current.length
+          ? current[current.length - 1].id
+          : undefined;
+        try {
+          const fresh = await projectsApi.listMessages(projectId, lastId);
+          if (fresh.length > 0) {
+            setMessages((prev) => {
+              const seen = new Set(prev.map((m) => m.id));
+              return [...prev, ...fresh.filter((m) => !seen.has(m.id))];
+            });
+            setTimeout(() => scrollToBottom(true), 0);
+          }
+        } catch {
+          // transient; next tick retries
         }
-      } catch {
-        // transient; next tick retries
-      }
-    }, 5000);
-    return () => clearInterval(interval);
+      }, 5000);
+    };
+
+    es = projectsApi.streamMessages(projectId);
+
+    if (!es) {
+      // SSE not supported — go straight to polling.
+      startPolling();
+    } else {
+      es.addEventListener('created', (e) => {
+        try {
+          const data = JSON.parse((e as MessageEvent).data);
+          if (data?.message) applyCreatedOrUpdated(data.message);
+        } catch {
+          /* ignore malformed event */
+        }
+      });
+      es.addEventListener('updated', (e) => {
+        try {
+          const data = JSON.parse((e as MessageEvent).data);
+          if (data?.message) applyCreatedOrUpdated(data.message);
+        } catch {
+          /* ignore malformed event */
+        }
+      });
+      es.addEventListener('deleted', (e) => {
+        try {
+          const data = JSON.parse((e as MessageEvent).data);
+          if (data?.messageId) {
+            setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
+          }
+        } catch {
+          /* ignore malformed event */
+        }
+      });
+      es.onerror = () => {
+        // Connection dropped or failed to open. Close it and fall back to
+        // polling so the thread keeps updating. EventSource would otherwise
+        // keep retrying on its own, but polling is the safer guaranteed path.
+        es?.close();
+        es = null;
+        startPolling();
+      };
+    }
+
+    return () => {
+      es?.close();
+      if (pollInterval) clearInterval(pollInterval);
+    };
   }, [projectId]);
 
   const send = async (e: React.FormEvent) => {

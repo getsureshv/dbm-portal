@@ -284,6 +284,20 @@ export const projects = {
       method: 'DELETE',
     }),
 
+  // Open a realtime Server-Sent Events stream for a project chat thread.
+  // Returns the EventSource so the caller can attach listeners / close it.
+  // Auth travels in the query string because the browser EventSource API can't
+  // set an Authorization header; the backend AuthGuard accepts `?token=`.
+  // Callers should also keep a polling fallback for when SSE errors out.
+  streamMessages: (projectId: string): EventSource | null => {
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
+      return null;
+    }
+    const token = getSessionToken();
+    const qs = token ? `?token=${encodeURIComponent(token)}` : '';
+    return new EventSource(`${BASE}/projects/${projectId}/messages/stream${qs}`);
+  },
+
   addDocument: (projectId: string, data: { s3Key: string; filename: string; category: string }) =>
     request<ApiDocument>(`/projects/${projectId}/documents`, {
       method: 'POST',

@@ -200,12 +200,10 @@ export class TasksService {
     if (!existing) {
       throw new NotFoundException('Task not found');
     }
-    const isMember =
-      existing.createdById === userId ||
-      existing.assigneeId === userId ||
-      existing.assignments.some((a) => a.userId === userId);
-    if (!isMember) {
-      throw new ForbiddenException('Only the creator or assignee may update this task');
+    // Editing task fields is creator-only. Assignees (receivers) mark their own
+    // part done via the complete/uncomplete endpoints, not by PATCHing here.
+    if (existing.createdById !== userId) {
+      throw new ForbiddenException('Only the task creator may edit this task');
     }
 
     // Reconcile the assignment set when assigneeIds is supplied.

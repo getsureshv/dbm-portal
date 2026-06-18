@@ -172,6 +172,7 @@ function CommandCenter({ currentUserId }: { currentUserId: string | null }) {
   const [mineOnly, setMineOnly] = useState(false);
   const [people, setPeople] = useState<ApiDmUser[]>([]);
   const [projectOptions, setProjectOptions] = useState<ApiProject[]>([]);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -228,49 +229,67 @@ function CommandCenter({ currentUserId }: { currentUserId: string | null }) {
     return true;
   });
 
+  const friendlyError = (err: unknown): string => {
+    const msg = err instanceof Error ? err.message : '';
+    if (/creator/i.test(msg) || /forbidden/i.test(msg)) {
+      return 'Only the task creator can make that change.';
+    }
+    return msg || 'Something went wrong. Please try again.';
+  };
+
   const updateStatus = async (task: ApiTask, status: TaskStatus) => {
+    setActionError(null);
     setAllTasks((prev) =>
       prev.map((t) => (t.id === task.id ? { ...t, status } : t)),
     );
     try {
       await tasksApi.update(task.id, { status });
-    } catch {
+    } catch (err) {
+      setActionError(friendlyError(err));
       load();
     }
   };
 
   const updateAssignees = async (task: ApiTask, assigneeIds: string[]) => {
+    setActionError(null);
     try {
       await tasksApi.update(task.id, { assigneeIds });
       load();
-    } catch {
-      // ignore
+    } catch (err) {
+      setActionError(friendlyError(err));
+      load();
     }
   };
 
   const completePart = async (task: ApiTask, done: boolean) => {
+    setActionError(null);
     try {
       await tasksApi.complete(task.id, done);
       load();
-    } catch {
+    } catch (err) {
+      setActionError(friendlyError(err));
       load();
     }
   };
 
   const forceComplete = async (task: ApiTask) => {
+    setActionError(null);
     try {
       await tasksApi.forceComplete(task.id);
       load();
-    } catch {
+    } catch (err) {
+      setActionError(friendlyError(err));
       load();
     }
   };
 
   const remove = async (task: ApiTask) => {
+    setActionError(null);
     setAllTasks((prev) => prev.filter((t) => t.id !== task.id));
     try {
       await tasksApi.remove(task.id);
-    } catch {
+    } catch (err) {
+      setActionError(friendlyError(err));
       load();
     }
   };
@@ -314,6 +333,20 @@ function CommandCenter({ currentUserId }: { currentUserId: string | null }) {
           {filtered.length} task{filtered.length === 1 ? '' : 's'}
         </span>
       </div>
+
+      {actionError && (
+        <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 mb-4 text-sm">
+          <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+          <span className="flex-1">{actionError}</span>
+          <button
+            onClick={() => setActionError(null)}
+            className="text-red-400 hover:text-red-600 flex-shrink-0"
+            aria-label="Dismiss"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {showCreate && (
         <CreateTaskForm
@@ -562,30 +595,31 @@ function TaskCard({
         <p className="text-sm font-medium text-gray-900 break-words flex-1">
           {task.title}
         </p>
-        {confirmDelete ? (
-          <div className="flex items-center gap-1 flex-shrink-0">
+        {isCreator &&
+          (confirmDelete ? (
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button
+                onClick={onDelete}
+                className="text-[11px] text-red-600 hover:text-red-700 font-medium"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="text-[11px] text-gray-400 hover:text-gray-600"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
             <button
-              onClick={onDelete}
-              className="text-[11px] text-red-600 hover:text-red-700 font-medium"
+              onClick={() => setConfirmDelete(true)}
+              className="text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+              aria-label="Delete task"
             >
-              Delete
+              <Trash2 size={14} />
             </button>
-            <button
-              onClick={() => setConfirmDelete(false)}
-              className="text-[11px] text-gray-400 hover:text-gray-600"
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setConfirmDelete(true)}
-            className="text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-            aria-label="Delete task"
-          >
-            <Trash2 size={14} />
-          </button>
-        )}
+          ))}
       </div>
 
       {task.description && (
@@ -678,17 +712,20 @@ function TaskCard({
             Force complete
           </button>
         )}
-        <button
-          onClick={() => setEditAssignees((v) => !v)}
-          className="inline-flex items-center gap-1 text-[11px] rounded-md px-2 py-1 text-gray-500 hover:bg-gray-100 ml-auto"
-        >
-          <Users size={11} />
-          {total > 0 ? 'Edit' : 'Assign'}
-        </button>
+        {isCreator && (
+          <button
+            onClick={() => setEditAssignees((v) => !v)}
+            className="inline-flex items-center gap-1 text-[11px] rounded-md px-2 py-1 text-gray-500 hover:bg-gray-100 ml-auto"
+          >
+            <Users size={11} />
+            {total > 0 ? 'Edit' : 'Assign'}
+          </button>
+        )}
       </div>
 
-      {/* Manual status control only matters for tasks with no assignees. */}
-      {total === 0 && (
+      {/* Manual status control only matters for tasks with no assignees, and is
+          a creator-only edit. */}
+      {isCreator && total === 0 && (
         <div className="flex items-center mt-2.5">
           <select
             value={task.status}
@@ -704,8 +741,8 @@ function TaskCard({
         </div>
       )}
 
-      {/* Inline multi-assignee editor. */}
-      {editAssignees && (
+      {/* Inline multi-assignee editor (creator-only). */}
+      {isCreator && editAssignees && (
         <div className="mt-2 border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
           {people.length === 0 ? (
             <p className="text-xs text-gray-400 px-3 py-3">No people found.</p>

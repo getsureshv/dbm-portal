@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronRight, ChevronDown, Loader2, AlertCircle, Pencil, ScanLine, Eye, X, Check, Wand2, Trash2, UserPlus, Mail, Clock, Building2, Globe, Phone, MessageSquare, Send } from 'lucide-react';
 import { useAuth } from '../../../../lib/auth-context';
-import { projects as projectsApi, uploads as uploadsApi, documents as documentsApi, ApiProject, ApiDocument, ProjectGrant, ApiProjectNote } from '../../../../lib/api';
+import { projects as projectsApi, uploads as uploadsApi, documents as documentsApi, ApiProject, ApiDocument, ProjectGrant, ApiProjectNote, ApiProjectMessage } from '../../../../lib/api';
 
-type TabType = 'overview' | 'documents' | 'scope' | 'team';
+type TabType = 'overview' | 'documents' | 'scope' | 'chat' | 'team';
 
 const STATUS_COLORS: Record<string, string> = {
   DISCOVERY: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -789,6 +789,326 @@ function authorInitials(author: ApiProjectNote['author']): string {
   return (first + second).toUpperCase();
 }
 
+// ─── Project Chat (team messaging) ─────────────────────────
+
+function ProjectChat({
+  projectId,
+  currentUserId,
+}: {
+  projectId: string;
+  currentUserId: string | null;
+}) {
+  const [messages, setMessages] = useState<ApiProjectMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [body, setBody] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editBody, setEditBody] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const messagesRef = useRef<ApiProjectMessage[]>([]);
+  messagesRef.current = messages;
+
+  const scrollToBottom = (smooth = true) => {
+    const el = scrollRef.current;
+    if (el)
+      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+  };
+
+  // Initial load.
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    projectsApi
+      .listMessages(projectId)
+      .then((data) => {
+        if (!active) return;
+        setMessages(data);
+        setTimeout(() => scrollToBottom(false), 0);
+      })
+      .catch((err) => active && setError(err.message || 'Failed to load chat'))
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
+
+  // Poll for new messages every 5s using the last message id as a cursor.
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const current = messagesRef.current;
+      const lastId = current.length ? current[current.length - 1].id : undefined;
+      try {
+        const fresh = await projectsApi.listMessages(projectId, lastId);
+        if (fresh.length > 0) {
+          setMessages((prev) => {
+            const seen = new Set(prev.map((m) => m.id));
+            const merged = [...prev, ...fresh.filter((m) => !seen.has(m.id))];
+            return merged;
+          });
+          setTimeout(() => scrollToBottom(true), 0);
+        }
+      } catch {
+        // transient; next tick retries
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [projectId]);
+
+  const send = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = body.trim();
+    if (!trimmed || sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      const created = await projectsApi.addMessage(projectId, trimmed);
+      setMessages((prev) =>
+        prev.some((m) => m.id === created.id) ? prev : [...prev, created],
+      );
+      setBody('');
+      setTimeout(() => scrollToBottom(true), 0);
+    } catch (err: any) {
+      setError(err.message || 'Failed to send message');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const startEdit = (m: ApiProjectMessage) => {
+    setEditingId(m.id);
+    setEditBody(m.body);
+  };
+  const saveEdit = async (messageId: string) => {
+    const trimmed = editBody.trim();
+    if (!trimmed || savingEdit) return;
+    setSavingEdit(true);
+    try {
+      const updated = await projectsApi.updateMessage(
+        projectId,
+        messageId,
+        trimmed,
+      );
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? updated : m)));
+      setEditingId(null);
+      setEditBody('');
+    } catch (err: any) {
+      setError(err.message || 'Failed to edit message');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+  const handleDelete = async (messageId: string) => {
+    try {
+      await projectsApi.deleteMessage(projectId, messageId);
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+      setConfirmDeleteId(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete message');
+    }
+  };
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl shadow-sm flex flex-col h-[600px]">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-100">
+        <MessageSquare size={20} className="text-amber-500" />
+        <h2 className="text-lg font-bold text-gray-900">Team Chat</h2>
+        <span className="text-sm text-gray-400">
+          Everyone with access to this project can chat here
+        </span>
+      </div>
+
+      {/* Messages */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        {loading ? (
+          <div className="flex justify-center py-10">
+            <Loader2 className="animate-spin text-amber-500" size={22} />
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center text-gray-400">
+            <MessageSquare size={32} className="mb-2 opacity-40" />
+            <p className="text-sm">No messages yet. Start the conversation.</p>
+          </div>
+        ) : (
+          messages.map((m) => {
+            const isOwn = !!currentUserId && m.author?.id === currentUserId;
+            const isEditing = editingId === m.id;
+            const wasEdited =
+              new Date(m.updatedAt).getTime() - new Date(m.createdAt).getTime() >
+              1000;
+            return (
+              <div
+                key={m.id}
+                className={`flex gap-3 group ${isOwn ? 'flex-row-reverse' : ''}`}
+              >
+                <div className="flex-shrink-0 w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-semibold">
+                  {authorInitials(m.author)}
+                </div>
+                <div
+                  className={`flex flex-col max-w-[75%] ${isOwn ? 'items-end' : 'items-start'}`}
+                >
+                  <div className="flex items-baseline gap-2 mb-1">
+                    <span className="text-xs font-medium text-gray-700">
+                      {isOwn ? 'You' : authorLabel(m.author)}
+                    </span>
+                    <span
+                      className="text-xs text-gray-400"
+                      title={new Date(m.createdAt).toLocaleString()}
+                    >
+                      {formatNoteTimestamp(m.createdAt)}
+                    </span>
+                    {wasEdited && (
+                      <span className="text-xs text-gray-400 italic">edited</span>
+                    )}
+                  </div>
+
+                  {isEditing ? (
+                    <div className="w-full">
+                      <textarea
+                        value={editBody}
+                        onChange={(e) => setEditBody(e.target.value)}
+                        rows={2}
+                        autoFocus
+                        className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-amber-500 resize-y"
+                        onKeyDown={(e) => {
+                          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter')
+                            saveEdit(m.id);
+                          if (e.key === 'Escape') {
+                            setEditingId(null);
+                            setEditBody('');
+                          }
+                        }}
+                      />
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <button
+                          type="button"
+                          onClick={() => saveEdit(m.id)}
+                          disabled={!editBody.trim() || savingEdit}
+                          className="inline-flex items-center gap-1 bg-amber-500 text-white text-xs font-semibold px-3 py-1 rounded-lg hover:bg-amber-600 disabled:opacity-50"
+                        >
+                          {savingEdit ? (
+                            <Loader2 className="animate-spin" size={12} />
+                          ) : (
+                            <Check size={12} />
+                          )}
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingId(null);
+                            setEditBody('');
+                          }}
+                          className="text-gray-500 text-xs px-2 py-1 hover:bg-gray-100 rounded-lg"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className={`rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap break-words ${
+                        isOwn
+                          ? 'bg-amber-500 text-white rounded-tr-sm'
+                          : 'bg-gray-100 text-gray-800 rounded-tl-sm'
+                      }`}
+                    >
+                      {m.body}
+                    </div>
+                  )}
+
+                  {isOwn && !isEditing && (
+                    <div className="flex items-center gap-3 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={() => startEdit(m)}
+                        className="text-xs text-gray-400 hover:text-amber-600 inline-flex items-center gap-1"
+                      >
+                        <Pencil size={11} /> Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(m.id)}
+                        className="text-xs text-gray-400 hover:text-red-600 inline-flex items-center gap-1"
+                      >
+                        <Trash2 size={11} /> Delete
+                      </button>
+                    </div>
+                  )}
+
+                  {confirmDeleteId === m.id && (
+                    <div className="mt-1 flex items-center gap-2 text-xs">
+                      <span className="text-red-600">Delete?</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(m.id)}
+                        className="font-semibold text-red-600 hover:text-red-700"
+                      >
+                        Yes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="text-gray-500 hover:text-gray-700"
+                      >
+                        No
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Composer */}
+      <form
+        onSubmit={send}
+        className="border-t border-gray-100 px-6 py-4 flex items-end gap-3"
+      >
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder="Type a message…"
+          rows={1}
+          className="flex-1 bg-white border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 resize-none max-h-32"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              send(e);
+            }
+          }}
+        />
+        <button
+          type="submit"
+          disabled={!body.trim() || sending}
+          className="flex-shrink-0 inline-flex items-center justify-center bg-amber-500 text-white w-11 h-11 rounded-lg hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          title="Send (Enter)"
+        >
+          {sending ? (
+            <Loader2 className="animate-spin" size={18} />
+          ) : (
+            <Send size={18} />
+          )}
+        </button>
+      </form>
+
+      {error && (
+        <p className="px-6 pb-3 text-sm text-red-600 flex items-center gap-1.5">
+          <AlertCircle size={14} />
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ProjectNotes({
   projectId,
   initialNotes,
@@ -1101,6 +1421,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
     { id: 'overview', label: 'Overview', icon: BookOpen },
     { id: 'documents', label: 'Documents', icon: FileText },
     { id: 'scope', label: 'Scope', icon: BookOpen },
+    { id: 'chat', label: 'Chat', icon: MessageSquare },
     { id: 'team', label: 'Sharing', icon: Users },
   ] as const;
 
@@ -1569,6 +1890,10 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
             </div>
           )}
         </div>
+      )}
+
+      {activeTab === 'chat' && (
+        <ProjectChat projectId={project.id} currentUserId={user?.id ?? null} />
       )}
 
       {activeTab === 'team' && <TeamTab project={project} />}

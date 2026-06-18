@@ -120,6 +120,17 @@ export interface ApiProject {
   notes?: ApiProjectNote[];
 }
 
+// A chat message in a project's team conversation.
+export interface ApiProjectMessage {
+  id: string;
+  projectId: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  author: { id: string; name: string | null; email: string };
+}
+
 // A note/comment on a project, captured with its author and timestamp.
 export interface ApiProjectNote {
   id: string;
@@ -247,6 +258,29 @@ export const projects = {
 
   deleteNote: (projectId: string, noteId: string) =>
     request<void>(`/projects/${projectId}/notes/${noteId}`, {
+      method: 'DELETE',
+    }),
+
+  // Chat / messages
+  listMessages: (projectId: string, after?: string) =>
+    request<ApiProjectMessage[]>(
+      `/projects/${projectId}/messages${after ? `?after=${after}` : ''}`,
+    ),
+
+  addMessage: (projectId: string, body: string) =>
+    request<ApiProjectMessage>(`/projects/${projectId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }),
+
+  updateMessage: (projectId: string, messageId: string, body: string) =>
+    request<ApiProjectMessage>(`/projects/${projectId}/messages/${messageId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ body }),
+    }),
+
+  deleteMessage: (projectId: string, messageId: string) =>
+    request<void>(`/projects/${projectId}/messages/${messageId}`, {
       method: 'DELETE',
     }),
 

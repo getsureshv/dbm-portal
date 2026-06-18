@@ -411,4 +411,98 @@ export class ProjectsService {
 
     await this.prisma.projectNote.delete({ where: { id: noteId } });
   }
+
+  // ── Chat / messages ──────────────────────────────────────────────────────
+
+  // List a project's chat messages oldest-first (thread order). The optional
+  // `after` cursor returns only messages created strictly after that message,
+  // so the client can poll for new ones without refetching the whole thread.
+  async listMessages(projectId: string, userId: string, after?: string) {
+    await this.getProject(projectId, userId, 'read');
+
+    let createdAfter: Date | undefined;
+    if (after) {
+      this.validateUuid(after);
+      const cursor = await this.prisma.projectMessage.findUnique({
+        where: { id: after },
+        select: { createdAt: true, projectId: true },
+      });
+      if (cursor && cursor.projectId === projectId) {
+        createdAfter = cursor.createdAt;
+      }
+    }
+
+    return this.prisma.projectMessage.findMany({
+      where: {
+        projectId,
+        ...(createdAfter ? { createdAt: { gt: createdAfter } } : {}),
+      },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        author: { select: { id: true, name: true, email: true } },
+      },
+    });
+  }
+
+  // Post a message. Author is the authenticated caller; requires update access
+  // to the project (i.e. a project member, not a read-only viewer).
+  async addMessage(projectId: string, userId: string, body: string) {
+    await this.getProject(projectId, userId, 'update');
+
+    return this.prisma.projectMessage.create({
+      data: { projectId, authorId: userId, body },
+      include: {
+        author: { select: { id: true, name: true, email: true } },
+      },
+    });
+  }
+
+  // Load a message and confirm it belongs to the project and the caller authored
+  // it. Only the author may edit or delete their own message.
+  private async getOwnMessageOrThrow(
+    projectId: string,
+    messageId: string,
+    userId: string,
+  ) {
+    this.validateUuid(projectId);
+    this.validateUuid(messageId);
+
+    const message = await this.prisma.projectMessage.findUnique({
+      where: { id: messageId },
+    });
+    if (!message || message.projectId !== projectId) {
+      throw new NotFoundException('Message not found');
+    }
+    if (message.authorId !== userId) {
+      throw new ForbiddenException('You can only modify your own messages');
+    }
+    return message;
+  }
+
+  // Edit a message body. Author-only.
+  async updateMessage(
+    projectId: string,
+    messageId: string,
+    userId: string,
+    body: string,
+  ) {
+    await this.getProject(projectId, userId, 'read');
+    await this.getOwnMessageOrThrow(projectId, messageId, userId);
+
+    return this.prisma.projectMessage.update({
+      where: { id: messageId },
+      data: { body },
+      include: {
+        author: { select: { id: true, name: true, email: true } },
+      },
+    });
+  }
+
+  // Delete a message. Author-only.
+  async deleteMessage(projectId: string, messageId: string, userId: string) {
+    await this.getProject(projectId, userId, 'read');
+    await this.getOwnMessageOrThrow(projectId, messageId, userId);
+
+    await this.prisma.projectMessage.delete({ where: { id: messageId } });
+  }
 }

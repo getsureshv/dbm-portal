@@ -26,6 +26,7 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { GrantProjectAccessDto } from './dto/grant-project-access.dto';
 import { CreateNoteDto } from './dto/create-note.dto';
+import { CreateMessageDto } from './dto/create-message.dto';
 
 @ApiTags('Projects')
 @Controller('projects')
@@ -156,6 +157,60 @@ export class ProjectsController {
   ) {
     const userId = req.userId;
     await this.projectsService.deleteNote(id, noteId, userId);
+  }
+
+  // ── Chat / messages ──────────────────────────────────────────────────────
+
+  @Get(':id/messages')
+  @RequirePermission('read', 'project')
+  @ApiOperation({
+    summary: 'List a project chat thread (oldest first; ?after=<id> for new)',
+  })
+  async listMessages(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Query('after') after?: string,
+  ) {
+    const userId = req.userId;
+    return this.projectsService.listMessages(id, userId, after);
+  }
+
+  @Post(':id/messages')
+  @RequirePermission('update', 'project')
+  @ApiOperation({ summary: 'Post a message to a project chat' })
+  async addMessage(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() dto: CreateMessageDto,
+  ) {
+    const userId = req.userId;
+    return this.projectsService.addMessage(id, userId, dto.body);
+  }
+
+  @Patch(':id/messages/:messageId')
+  @RequirePermission('read', 'project')
+  @ApiOperation({ summary: "Edit one of the caller's own messages" })
+  async updateMessage(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+    @Body() dto: CreateMessageDto,
+  ) {
+    const userId = req.userId;
+    return this.projectsService.updateMessage(id, messageId, userId, dto.body);
+  }
+
+  @Delete(':id/messages/:messageId')
+  @HttpCode(204)
+  @RequirePermission('read', 'project')
+  @ApiOperation({ summary: "Delete one of the caller's own messages" })
+  async deleteMessage(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+  ) {
+    const userId = req.userId;
+    await this.projectsService.deleteMessage(id, messageId, userId);
   }
 
   @Patch(':id')

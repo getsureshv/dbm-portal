@@ -112,6 +112,26 @@ export class TasksController {
     return this.tasks.setAssignmentCompletion(id, req.userId, false);
   }
 
+  // POST /tasks/:id/start — mark the current user's part as started.
+  // Body { started?: boolean } — pass { started: false } to clear.
+  @Post(':id/start')
+  @ApiOperation({ summary: "Mark the current user's part of a task as started" })
+  async startPart(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { started?: boolean },
+  ) {
+    const started = body?.started !== false;
+    return this.tasks.setAssignmentStarted(id, req.userId, started);
+  }
+
+  // POST /tasks/:id/unstart — explicitly clear the current user's started state.
+  @Post(':id/unstart')
+  @ApiOperation({ summary: "Clear the current user's started state on a task" })
+  async unstartPart(@Req() req: any, @Param('id') id: string) {
+    return this.tasks.setAssignmentStarted(id, req.userId, false);
+  }
+
   // POST /tasks/:id/force-complete — creator-only force the whole task done.
   @Post(':id/force-complete')
   @ApiOperation({ summary: 'Force-complete a task (creator only)' })

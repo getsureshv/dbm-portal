@@ -272,6 +272,17 @@ function CommandCenter({ currentUserId }: { currentUserId: string | null }) {
     }
   };
 
+  const startPart = async (task: ApiTask, started: boolean) => {
+    setActionError(null);
+    try {
+      await tasksApi.start(task.id, started);
+      load();
+    } catch (err) {
+      setActionError(friendlyError(err));
+      load();
+    }
+  };
+
   const forceComplete = async (task: ApiTask) => {
     setActionError(null);
     try {
@@ -397,6 +408,7 @@ function CommandCenter({ currentUserId }: { currentUserId: string | null }) {
                         onStatus={(s) => updateStatus(t, s)}
                         onAssignees={(ids) => updateAssignees(t, ids)}
                         onCompletePart={(done) => completePart(t, done)}
+                        onStartPart={(started) => startPart(t, started)}
                         onForceComplete={() => forceComplete(t)}
                         onDelete={() => remove(t)}
                       />
@@ -557,6 +569,7 @@ function TaskCard({
   onStatus,
   onAssignees,
   onCompletePart,
+  onStartPart,
   onForceComplete,
   onDelete,
 }: {
@@ -566,6 +579,7 @@ function TaskCard({
   onStatus: (s: TaskStatus) => void;
   onAssignees: (ids: string[]) => void;
   onCompletePart: (done: boolean) => void;
+  onStartPart: (started: boolean) => void;
   onForceComplete: () => void;
   onDelete: () => void;
 }) {
@@ -579,6 +593,7 @@ function TaskCard({
   const isCreator = currentUserId != null && task.createdById === currentUserId;
   const myAssignment = assignments.find((a) => a.userId === currentUserId);
   const iAmDone = !!myAssignment?.completedAt;
+  const iAmStarted = !!myAssignment?.startedAt;
   const allDone = total > 0 && doneCount === total;
 
   const toggleAssignee = (id: string) => {
@@ -666,14 +681,19 @@ function TaskCard({
         <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
           {assignments.map((a) => {
             const done = a.completedAt !== null;
+            const started = !done && a.startedAt !== null;
             return (
               <span
                 key={a.id}
-                title={`${userLabel(a.user)}${done ? ' — done' : ' — pending'}`}
+                title={`${userLabel(a.user)}${
+                  done ? ' — done' : started ? ' — working on it' : ' — pending'
+                }`}
                 className={`relative inline-flex items-center justify-center w-6 h-6 rounded-full text-[9px] font-semibold ${
                   done
                     ? 'bg-green-100 text-green-700 ring-1 ring-green-400'
-                    : 'bg-gray-100 text-gray-500'
+                    : started
+                      ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-400'
+                      : 'bg-gray-100 text-gray-500'
                 }`}
               >
                 {userInitials(a.user)}
@@ -681,6 +701,9 @@ function TaskCard({
                   <span className="absolute -bottom-0.5 -right-0.5 bg-green-500 text-white rounded-full w-3 h-3 flex items-center justify-center">
                     <Check size={8} />
                   </span>
+                )}
+                {started && (
+                  <span className="absolute -bottom-0.5 -right-0.5 bg-amber-500 rounded-full w-2.5 h-2.5 ring-1 ring-white" />
                 )}
               </span>
             );
@@ -690,6 +713,26 @@ function TaskCard({
 
       {/* Action row */}
       <div className="flex flex-wrap items-center gap-2 mt-2.5">
+        {myAssignment && !iAmDone && (
+          iAmStarted ? (
+            <button
+              onClick={() => onStartPart(false)}
+              className="inline-flex items-center gap-1 text-[11px] rounded-md px-2 py-1 font-medium bg-amber-100 text-amber-700 hover:bg-amber-200"
+              title="You're working on this — click to stop"
+            >
+              <Loader2 size={11} />
+              Working on it
+            </button>
+          ) : (
+            <button
+              onClick={() => onStartPart(true)}
+              className="inline-flex items-center gap-1 text-[11px] rounded-md px-2 py-1 font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
+            >
+              <ArrowRight size={11} />
+              Start
+            </button>
+          )
+        )}
         {myAssignment && (
           <button
             onClick={() => onCompletePart(!iAmDone)}

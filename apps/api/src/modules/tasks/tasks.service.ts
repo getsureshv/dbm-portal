@@ -26,19 +26,23 @@ const TASK_INCLUDE = {
   },
 } as const;
 
-type AssignmentLike = { completedAt: Date | null };
+type AssignmentLike = { startedAt?: Date | null; completedAt: Date | null };
 
 // Derive task status from its assignments. With no assignments we keep the
-// task's current (manual) status untouched.
+// task's current (manual) status untouched. With assignments: DONE when every
+// part is completed; IN_PROGRESS as soon as ANY part is started or completed;
+// otherwise TODO.
 function deriveStatus(
   assignments: AssignmentLike[],
   fallback: TaskStatus,
 ): TaskStatus {
   if (assignments.length === 0) return fallback;
   const doneCount = assignments.filter((a) => a.completedAt !== null).length;
-  if (doneCount === 0) return TaskStatus.TODO;
   if (doneCount === assignments.length) return TaskStatus.DONE;
-  return TaskStatus.IN_PROGRESS;
+  const anyActive = assignments.some(
+    (a) => a.startedAt != null || a.completedAt != null,
+  );
+  return anyActive ? TaskStatus.IN_PROGRESS : TaskStatus.TODO;
 }
 
 export interface ListTasksFilters {
@@ -235,7 +239,7 @@ export class TasksService {
     // Recompute derived status from the (post-reconcile) assignment rows.
     const liveAssignments = await this.prisma.taskAssignment.findMany({
       where: { taskId: id },
-      select: { completedAt: true },
+      select: { startedAt: true, completedAt: true },
     });
 
     // Determine the status + completedAt to persist.
@@ -319,14 +323,61 @@ export class TasksService {
       throw new ForbiddenException('You are not assigned to this task');
     }
 
+    const now = new Date();
     await this.prisma.taskAssignment.update({
       where: { id: assignment.id },
-      data: { completedAt: done ? new Date() : null },
+      data: {
+        completedAt: done ? now : null,
+        // Completing implies started. Un-completing leaves startedAt as-is
+        // (they're still working on it).
+        ...(done && assignment.startedAt == null ? { startedAt: now } : {}),
+      },
     });
 
     const liveAssignments = await this.prisma.taskAssignment.findMany({
       where: { taskId },
-      select: { completedAt: true },
+      select: { startedAt: true, completedAt: true },
+    });
+    const nextStatus = deriveStatus(liveAssignments, task.status);
+
+    const updated = await this.prisma.task.update({
+      where: { id: taskId },
+      data: {
+        status: nextStatus,
+        completedAt: nextStatus === TaskStatus.DONE ? new Date() : null,
+      },
+      include: TASK_INCLUDE,
+    });
+
+    this.publishToRelevantUsers(updated);
+    return updated;
+  }
+
+  // Mark (or unmark) the requesting user's own part as started ("working on
+  // it") without completing it. Assignee-only.
+  async setAssignmentStarted(taskId: string, userId: string, started: boolean) {
+    this.validateUuid(taskId);
+
+    const task = await this.prisma.task.findUnique({
+      where: { id: taskId },
+      include: { assignments: true },
+    });
+    if (!task) {
+      throw new NotFoundException('Task not found');
+    }
+    const assignment = task.assignments.find((a) => a.userId === userId);
+    if (!assignment) {
+      throw new ForbiddenException('You are not assigned to this task');
+    }
+
+    await this.prisma.taskAssignment.update({
+      where: { id: assignment.id },
+      data: { startedAt: started ? new Date() : null },
+    });
+
+    const liveAssignments = await this.prisma.taskAssignment.findMany({
+      where: { taskId },
+      select: { startedAt: true, completedAt: true },
     });
     const nextStatus = deriveStatus(liveAssignments, task.status);
 
@@ -362,6 +413,11 @@ export class TasksService {
     await this.prisma.taskAssignment.updateMany({
       where: { taskId, completedAt: null },
       data: { completedAt: now },
+    });
+    // Completing implies started — fill any missing start timestamps.
+    await this.prisma.taskAssignment.updateMany({
+      where: { taskId, startedAt: null },
+      data: { startedAt: now },
     });
 
     const updated = await this.prisma.task.update({

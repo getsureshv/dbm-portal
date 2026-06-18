@@ -1048,6 +1048,7 @@ export interface ApiTaskAssignment {
   id: string;
   taskId: string;
   userId: string;
+  startedAt: string | null;
   completedAt: string | null;
   createdAt: string;
   user: { id: string; name: string | null; email: string };
@@ -1111,6 +1112,14 @@ export const tasks = {
     request<ApiTask>(`/tasks/${id}/complete`, {
       method: 'POST',
       body: JSON.stringify({ done }),
+    }),
+
+  // Mark the current user's own part as started ("working on it"), or clear it
+  // with started=false.
+  start: (id: string, started = true) =>
+    request<ApiTask>(`/tasks/${id}/start`, {
+      method: 'POST',
+      body: JSON.stringify({ started }),
     }),
 
   // Creator-only: force the whole task complete.

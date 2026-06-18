@@ -19,6 +19,9 @@ import {
   Users,
   Plus,
   ArrowLeft,
+  LayoutGrid,
+  CheckSquare,
+  Clock,
 } from 'lucide-react';
 import { useAuth } from '../../../lib/auth-context';
 import {
@@ -66,7 +69,7 @@ function userInitials(u: { name?: string | null; email: string } | null): string
 
 // ---- page ------------------------------------------------------------------
 
-type TopTab = 'dms' | 'ai';
+type TopTab = 'dms' | 'ai' | 'command';
 
 export default function ChatPage() {
   const { user } = useAuth();
@@ -105,13 +108,101 @@ export default function ChatPage() {
           <Bot size={16} />
           AI Scope Architect
         </button>
+        <button
+          onClick={() => setTab('command')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            tab === 'command'
+              ? 'border-amber-500 text-amber-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <LayoutGrid size={16} />
+          Command Center
+          <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide bg-gray-100 text-gray-500 rounded-full px-1.5 py-0.5">
+            Soon
+          </span>
+        </button>
       </div>
 
       {tab === 'dms' ? (
         <DirectMessages currentUserId={user?.id ?? null} />
-      ) : (
+      ) : tab === 'ai' ? (
         <ScopeLauncher />
+      ) : (
+        <CommandCenterPreview />
       )}
+    </div>
+  );
+}
+
+// ---- Command Center (planned — future development) -------------------------
+// Placeholder tab capturing the roadmap for a task-management command center
+// inside the messaging hub. Not yet functional; shown so the direction is
+// visible in-product. See docs/roadmap-command-center.md.
+function CommandCenterPreview() {
+  const planned = [
+    {
+      icon: CheckSquare,
+      title: 'Tasks & assignments',
+      desc: 'Create tasks, assign them to teammates, set due dates, and track status across all your projects in one place.',
+    },
+    {
+      icon: MessageSquare,
+      title: 'Turn messages into tasks',
+      desc: 'Promote any direct message or project comment into a tracked task without leaving the conversation.',
+    },
+    {
+      icon: LayoutGrid,
+      title: 'Unified board',
+      desc: 'A single board / list view across projects — filter by assignee, project, status, or due date.',
+    },
+    {
+      icon: Clock,
+      title: 'Reminders & follow-ups',
+      desc: 'Due-date reminders and nudges surfaced through the notification bell so nothing slips.',
+    },
+  ];
+
+  return (
+    <div>
+      <div className="bg-gradient-to-br from-amber-50 to-white border border-amber-100 rounded-2xl p-8 text-center mb-6">
+        <div className="w-14 h-14 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <LayoutGrid className="text-amber-600" size={26} />
+        </div>
+        <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700 rounded-full px-2.5 py-1 mb-3">
+          <Clock size={12} />
+          Coming soon
+        </div>
+        <h2 className="text-xl font-bold text-gray-900">Command Center</h2>
+        <p className="text-gray-500 mt-2 max-w-md mx-auto">
+          A task-management hub that lives alongside your messages — manage
+          work, assignments, and follow-ups without leaving the conversation.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {planned.map((item) => (
+          <div
+            key={item.title}
+            className="bg-white border border-gray-200 rounded-xl p-4 flex items-start gap-3"
+          >
+            <div className="w-9 h-9 bg-gray-50 rounded-lg flex items-center justify-center flex-shrink-0">
+              <item.icon className="text-amber-600" size={18} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-900">
+                {item.title}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p className="text-center text-xs text-gray-400 mt-6">
+        On the roadmap. Have ideas for what the Command Center should do? Let us
+        know.
+      </p>
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { ProvidersModule } from './modules/providers/providers.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { JurisdictionsModule } from './modules/jurisdictions/jurisdictions.module';
 import { AccessModule } from './modules/access/access.module';
+import { DmModule } from './modules/dm/dm.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -35,6 +36,7 @@ import { HealthController } from './health.controller';
     DocumentsModule,
     JurisdictionsModule,
     AccessModule,
+    DmModule,
   ],
   controllers: [HealthController],
 })

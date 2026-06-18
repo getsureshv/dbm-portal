@@ -919,3 +919,101 @@ export const admin = {
     return request<ApiAuditPage>(`/admin/audit${suffix}`);
   },
 };
+
+// ---- Direct Messages (DMs) -------------------------------------------------
+
+export interface ApiDmUser {
+  id: string;
+  name: string | null;
+  email: string;
+  role?: string | null;
+}
+
+export interface ApiDmMessage {
+  id: string;
+  threadId: string;
+  senderId: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  sender: { id: string; name: string | null; email: string };
+}
+
+export interface ApiDmThread {
+  id: string;
+  otherUser: ApiDmUser | null;
+  lastMessageAt: string | null;
+  unreadCount: number;
+  lastMessage: {
+    id: string;
+    body: string;
+    senderId: string;
+    createdAt: string;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const dm = {
+  directory: (search?: string) => {
+    const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+    return request<ApiDmUser[]>(`/dm/directory${qs}`);
+  },
+
+  listThreads: () => request<ApiDmThread[]>('/dm/threads'),
+
+  // Start or reuse a 1:1 conversation with another user.
+  startThread: (userId: string) =>
+    request<ApiDmThread>('/dm/threads', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    }),
+
+  listMessages: (threadId: string, after?: string) => {
+    const qs = after ? `?after=${encodeURIComponent(after)}` : '';
+    return request<ApiDmMessage[]>(`/dm/threads/${threadId}/messages${qs}`);
+  },
+
+  addMessage: (threadId: string, body: string) =>
+    request<ApiDmMessage>(`/dm/threads/${threadId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }),
+
+  updateMessage: (threadId: string, messageId: string, body: string) =>
+    request<ApiDmMessage>(`/dm/threads/${threadId}/messages/${messageId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ body }),
+    }),
+
+  deleteMessage: (threadId: string, messageId: string) =>
+    request<void>(`/dm/threads/${threadId}/messages/${messageId}`, {
+      method: 'DELETE',
+    }),
+
+  markRead: (threadId: string) =>
+    request<{ ok: boolean }>(`/dm/threads/${threadId}/read`, {
+      method: 'POST',
+    }),
+
+  // Realtime SSE for a single conversation. Token rides in the query string
+  // because EventSource cannot set an Authorization header.
+  streamThread: (threadId: string): EventSource | null => {
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
+      return null;
+    }
+    const token = getSessionToken();
+    const qs = token ? `?token=${encodeURIComponent(token)}` : '';
+    return new EventSource(`${BASE}/dm/threads/${threadId}/stream${qs}`);
+  },
+
+  // Realtime SSE for the conversation list (unread badges / re-sort pings).
+  streamInbox: (): EventSource | null => {
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
+      return null;
+    }
+    const token = getSessionToken();
+    const qs = token ? `?token=${encodeURIComponent(token)}` : '';
+    return new EventSource(`${BASE}/dm/inbox/stream${qs}`);
+  },
+};

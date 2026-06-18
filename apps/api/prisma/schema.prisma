@@ -142,6 +142,9 @@ model User {
   projectMessages     ProjectMessage[]
   chatConversations   ChatConversation[]
   UserPersona         UserPersona[]
+  directThreadsAsA    DirectThread[]     @relation("DirectThreadUserA")
+  directThreadsAsB    DirectThread[]     @relation("DirectThreadUserB")
+  directMessages      DirectMessage[]
 
   @@map("users")
 }
@@ -392,6 +395,46 @@ model ProjectMessage {
   @@index([projectId])
   @@index([authorId])
   @@map("project_messages")
+}
+
+// A 1:1 direct-message conversation between two users. The pair is stored in a
+// canonical order (userAId holds the lexicographically smaller uuid) so there is
+// exactly one thread per pair, enforced by the unique constraint. Per-participant
+// lastReadAt timestamps drive unread badges.
+model DirectThread {
+  id            String          @id @default(uuid()) @db.Uuid
+  userAId       String          @map("user_a_id") @db.Uuid
+  userBId       String          @map("user_b_id") @db.Uuid
+  userALastRead DateTime?       @map("user_a_last_read")
+  userBLastRead DateTime?       @map("user_b_last_read")
+  lastMessageAt DateTime?       @map("last_message_at")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  userA    User            @relation("DirectThreadUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB    User            @relation("DirectThreadUserB", fields: [userBId], references: [id], onDelete: Cascade)
+  messages DirectMessage[]
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+  @@map("direct_threads")
+}
+
+model DirectMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  threadId  String   @map("thread_id") @db.Uuid
+  senderId  String   @map("sender_id") @db.Uuid
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  thread DirectThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender User         @relation(fields: [senderId], references: [id])
+
+  @@index([threadId])
+  @@index([senderId])
+  @@map("direct_messages")
 }
 
 model ProjectDocument {

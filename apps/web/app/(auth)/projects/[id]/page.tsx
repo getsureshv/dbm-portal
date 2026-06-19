@@ -1593,25 +1593,27 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200 flex gap-8">
-        {TABS.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as TabType)}
-              className={`pb-4 font-medium transition-colors flex items-center gap-2 ${
-                isActive
-                  ? 'text-amber-600 border-b-2 border-amber-600'
-                  : 'text-gray-500 hover:text-gray-900'
-              }`}
-            >
-              <Icon size={18} />
-              {tab.label}
-            </button>
-          );
-        })}
+      <div className="border-b border-gray-200 -mx-4 sm:mx-0 overflow-x-auto scrollbar-none">
+        <div className="flex gap-5 sm:gap-8 px-4 sm:px-0 w-max sm:w-auto">
+          {TABS.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as TabType)}
+                className={`pb-4 font-medium transition-colors flex items-center gap-2 whitespace-nowrap ${
+                  isActive
+                    ? 'text-amber-600 border-b-2 border-amber-600'
+                    : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                <Icon size={18} />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Tab Content */}

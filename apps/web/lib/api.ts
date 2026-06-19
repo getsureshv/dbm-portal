@@ -1337,6 +1337,7 @@ export const attachments = {
     fileName: string;
     width?: number;
     height?: number;
+    durationMs?: number;
   }) =>
     request<PresignUploadResult>('/attachments/presign-upload', {
       method: 'POST',

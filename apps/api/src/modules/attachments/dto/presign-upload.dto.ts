@@ -12,9 +12,9 @@ import {
 // pending Attachment row (no message link yet) and returns the URL + id; the
 // browser then PUTs the bytes directly to R2 and includes the id when sending
 // the message. Only `image` is accepted in increment 1, but the shape is kept
-// generic so video/audio/file slot in later.
+// generic so audio/file slot in later. Image + video are accepted today.
 export class PresignUploadDto {
-  // Kept generic; service rejects anything but 'image' for now.
+  // Kept generic; service enforces per-kind mime + size and rejects audio/file.
   @IsString()
   @IsIn(['image', 'video', 'audio', 'file'])
   kind: string;
@@ -25,9 +25,9 @@ export class PresignUploadDto {
 
   @IsInt()
   @Min(1)
-  // Hard ceiling matches the server-side image cap (25MB). Anything larger is
-  // rejected here before a presign is issued.
-  @Max(25 * 1024 * 1024)
+  // Hard ceiling matches the largest per-kind cap (video, 100MB). The service
+  // applies the tighter per-kind limit (images 25MB) before issuing a presign.
+  @Max(100 * 1024 * 1024)
   sizeBytes: number;
 
   @IsString()
@@ -45,4 +45,12 @@ export class PresignUploadDto {
   @Min(1)
   @Max(100000)
   height?: number;
+
+  // Video duration in milliseconds, read client-side from the loadedmetadata
+  // event. Best-effort: omitted when the browser can't report it.
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(24 * 60 * 60 * 1000)
+  durationMs?: number;
 }

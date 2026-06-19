@@ -7,21 +7,45 @@ import {
   useState,
   type DragEvent,
 } from 'react';
-import { ImageIcon, Loader2, X, AlertCircle } from 'lucide-react';
+import {
+  ImageIcon,
+  Loader2,
+  X,
+  AlertCircle,
+  Paperclip,
+  Download,
+  Video as VideoIcon,
+} from 'lucide-react';
 import { attachments as attachmentsApi, type ApiAttachment } from './api';
 
 // ---- Client-side validation rules (mirror the server) ----------------------
-// Images only for now; the foundation is generic but the UI gates to images.
+// The foundation is generic; the UI gates to images + videos. Caps are
+// per-kind (images 25MB, video 100MB) to match the server.
 const ALLOWED_IMAGE_MIME = [
   'image/jpeg',
   'image/png',
   'image/gif',
   'image/webp',
 ];
+const ALLOWED_VIDEO_MIME = ['video/mp4', 'video/webm', 'video/quicktime'];
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024; // 25MB
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100MB
+
+type UploadKind = 'image' | 'video';
 
 export function isAllowedImage(file: File): boolean {
   return ALLOWED_IMAGE_MIME.includes(file.type);
+}
+
+export function isAllowedVideo(file: File): boolean {
+  return ALLOWED_VIDEO_MIME.includes(file.type);
+}
+
+// Classify a picked file into an upload kind, or null if unsupported.
+function classifyFile(file: File): UploadKind | null {
+  if (isAllowedImage(file)) return 'image';
+  if (isAllowedVideo(file)) return 'video';
+  return null;
 }
 
 export function humanSize(bytes: number): string {
@@ -56,6 +80,56 @@ function readImageDimensions(
   });
 }
 
+// Read a video's duration (ms) and pixel dimensions in the browser, so we can
+// pass them to the presign call. Best-effort: on any failure we resolve with
+// nulls rather than blocking the upload.
+function readVideoMetadata(file: File): Promise<{
+  durationMs: number | null;
+  width: number | null;
+  height: number | null;
+}> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      resolve({ durationMs: null, width: null, height: null });
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    let settled = false;
+    const done = (
+      result: {
+        durationMs: number | null;
+        width: number | null;
+        height: number | null;
+      },
+    ) => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      resolve(result);
+    };
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      const durSec = video.duration;
+      done({
+        durationMs:
+          Number.isFinite(durSec) && durSec > 0
+            ? Math.round(durSec * 1000)
+            : null,
+        width: video.videoWidth || null,
+        height: video.videoHeight || null,
+      });
+    };
+    video.onerror = () => done({ durationMs: null, width: null, height: null });
+    // Guard against metadata never loading (resolve after a short timeout).
+    setTimeout(
+      () => done({ durationMs: null, width: null, height: null }),
+      5000,
+    );
+    video.src = url;
+  });
+}
+
 // ---- Pending-upload state machine ------------------------------------------
 // A file the user picked that is uploading / uploaded / errored, BEFORE the
 // message is sent. Once the message is sent the server-confirmed attachmentIds
@@ -66,6 +140,9 @@ export interface PendingAttachment {
   // Stable client id for list keys + remove.
   localId: string;
   file: File;
+  // Upload kind once classified ('image' | 'video'). Rejected files keep the
+  // best guess (or 'image') purely for the preview icon.
+  kind: UploadKind;
   // Local object URL for the inline preview thumbnail while composing.
   previewUrl: string;
   status: PendingStatus;
@@ -158,14 +235,27 @@ export function useAttachments(): UseAttachments {
   const startUpload = useCallback(
     async (item: PendingAttachment) => {
       try {
-        const dims = await readImageDimensions(item.file);
+        let width: number | null = null;
+        let height: number | null = null;
+        let durationMs: number | null = null;
+        if (item.kind === 'video') {
+          const meta = await readVideoMetadata(item.file);
+          width = meta.width;
+          height = meta.height;
+          durationMs = meta.durationMs;
+        } else {
+          const dims = await readImageDimensions(item.file);
+          width = dims.width;
+          height = dims.height;
+        }
         const presign = await attachmentsApi.presignUpload({
-          kind: 'image',
+          kind: item.kind,
           mime: item.file.type,
           sizeBytes: item.file.size,
           fileName: item.file.name,
-          width: dims.width ?? undefined,
-          height: dims.height ?? undefined,
+          width: width ?? undefined,
+          height: height ?? undefined,
+          durationMs: durationMs ?? undefined,
         });
         patch(item.localId, { attachmentId: presign.attachmentId });
 
@@ -195,29 +285,36 @@ export function useAttachments(): UseAttachments {
       const arr = Array.from(files);
       const accepted: PendingAttachment[] = [];
       for (const file of arr) {
-        if (!isAllowedImage(file)) {
+        const kind = classifyFile(file);
+        if (!kind) {
           // Surface a rejected entry so the user sees why it didn't attach.
           accepted.push({
             localId: nextLocalId(),
             file,
+            kind: 'image',
             previewUrl: '',
             status: 'error',
             progress: 0,
             attachmentId: null,
-            error: 'Only JPG, PNG, GIF, or WebP images are supported.',
+            error:
+              'Unsupported file. Allowed: JPG, PNG, GIF, WebP images or MP4, WebM, MOV videos.',
             xhr: null,
           });
           continue;
         }
-        if (file.size > MAX_IMAGE_BYTES) {
+        const maxBytes = kind === 'video' ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+        if (file.size > maxBytes) {
           accepted.push({
             localId: nextLocalId(),
             file,
+            kind,
             previewUrl: '',
             status: 'error',
             progress: 0,
             attachmentId: null,
-            error: `Image is too large (max ${humanSize(MAX_IMAGE_BYTES)}).`,
+            error: `${kind === 'video' ? 'Video' : 'Image'} is too large (max ${humanSize(
+              maxBytes,
+            )}).`,
             xhr: null,
           });
           continue;
@@ -225,6 +322,7 @@ export function useAttachments(): UseAttachments {
         accepted.push({
           localId: nextLocalId(),
           file,
+          kind,
           previewUrl: URL.createObjectURL(file),
           status: 'uploading',
           progress: 0,
@@ -310,15 +408,15 @@ export function AttachmentPickerButton({
         type="button"
         disabled={disabled}
         onClick={() => inputRef.current?.click()}
-        aria-label="Attach images"
+        aria-label="Attach images or videos"
         className="flex-shrink-0 p-2 text-gray-400 hover:text-amber-600 disabled:opacity-50"
       >
-        <ImageIcon size={18} />
+        <Paperclip size={18} />
       </button>
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/png,image/gif,image/webp"
+        accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/quicktime"
         multiple
         className="hidden"
         onChange={(e) => {
@@ -348,7 +446,15 @@ export function PendingAttachments({
           key={p.localId}
           className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex-shrink-0"
         >
-          {p.previewUrl ? (
+          {p.previewUrl && p.kind === 'video' ? (
+            <video
+              src={p.previewUrl}
+              className="w-full h-full object-cover"
+              muted
+              playsInline
+              preload="metadata"
+            />
+          ) : p.previewUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={p.previewUrl}
@@ -357,7 +463,18 @@ export function PendingAttachments({
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-gray-300">
-              <ImageIcon size={20} />
+              {p.kind === 'video' ? (
+                <VideoIcon size={20} />
+              ) : (
+                <ImageIcon size={20} />
+              )}
+            </div>
+          )}
+
+          {/* video badge so the kind is obvious in the composer strip */}
+          {p.kind === 'video' && p.status !== 'error' && (
+            <div className="absolute bottom-0.5 left-0.5 bg-black/60 text-white rounded px-1 py-px flex items-center gap-0.5 pointer-events-none">
+              <VideoIcon size={10} />
             </div>
           )}
 
@@ -538,6 +655,95 @@ function AttachmentImage({ attachment }: { attachment: ApiAttachment }) {
   );
 }
 
+function formatDuration(ms: number | null): string | null {
+  if (!ms || ms <= 0) return null;
+  const total = Math.round(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// A sent video attachment: native <video controls> with a short-lived signed
+// URL. On playback error (codec the browser can't decode) we fall back to a
+// download link. If the URL expires we re-fetch on demand, same as images.
+function AttachmentVideo({ attachment }: { attachment: ApiAttachment }) {
+  const { url, loading, failed, load } = useSignedUrl(attachment.id);
+  const [playbackError, setPlaybackError] = useState(false);
+  // Allow one silent re-fetch (covers an expired URL) before falling back to a
+  // download link (covers a codec the browser genuinely can't decode).
+  const retriedRef = useRef(false);
+  const dur = formatDuration(attachment.durationMs);
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachment.id]);
+
+  if (failed) {
+    return (
+      <button
+        type="button"
+        onClick={() => void load()}
+        className="w-48 h-32 flex flex-col items-center justify-center gap-1 rounded-lg border border-gray-200 bg-gray-50 text-gray-400 text-[11px]"
+      >
+        <AlertCircle size={16} />
+        Tap to retry
+      </button>
+    );
+  }
+
+  if (loading || !url) {
+    return (
+      <div className="w-48 h-32 flex items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-300">
+        <Loader2 size={18} className="animate-spin" />
+      </div>
+    );
+  }
+
+  if (playbackError) {
+    return (
+      <a
+        href={url}
+        download
+        className="w-48 flex flex-col items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 p-4 text-gray-500 text-xs hover:bg-gray-100"
+      >
+        <Download size={18} />
+        <span className="text-center">
+          This video can&apos;t play here. Download
+          {dur ? ` (${dur})` : ''}.
+        </span>
+      </a>
+    );
+  }
+
+  return (
+    <div className="relative min-w-0 max-w-full">
+      <video
+        src={url}
+        controls
+        playsInline
+        preload="metadata"
+        className="rounded-lg border border-gray-200 max-w-[18rem] max-h-72 w-auto h-auto min-w-0"
+        onError={() => {
+          // URL may have expired between fetch and play — re-fetch once before
+          // declaring the codec unplayable.
+          if (!retriedRef.current) {
+            retriedRef.current = true;
+            void load();
+            return;
+          }
+          setPlaybackError(true);
+        }}
+      />
+      {dur && (
+        <span className="absolute bottom-1.5 right-1.5 bg-black/70 text-white text-[10px] rounded px-1 py-px pointer-events-none">
+          {dur}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function MessageAttachments({
   attachments,
 }: {
@@ -546,11 +752,15 @@ export function MessageAttachments({
   if (!attachments || attachments.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-2 mt-1.5 min-w-0 max-w-full">
-      {attachments.map((a) =>
-        a.kind === 'image' ? (
-          <AttachmentImage key={a.id} attachment={a} />
-        ) : null,
-      )}
+      {attachments.map((a) => {
+        if (a.kind === 'image') {
+          return <AttachmentImage key={a.id} attachment={a} />;
+        }
+        if (a.kind === 'video') {
+          return <AttachmentVideo key={a.id} attachment={a} />;
+        }
+        return null;
+      })}
     </div>
   );
 }

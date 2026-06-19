@@ -20,8 +20,8 @@ import { PresignUploadDto } from './dto/presign-upload.dto';
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Allowed image MIME types for increment 1, mapped to the file extension used
-// in the generated S3 key.
+// Allowed MIME types per attachment kind, mapped to the file extension used in
+// the generated S3 key. Caps are per-kind: images 25MB, video 100MB.
 const IMAGE_MIME_EXT: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -29,7 +29,14 @@ const IMAGE_MIME_EXT: Record<string, string> = {
   'image/webp': 'webp',
 };
 
+const VIDEO_MIME_EXT: Record<string, string> = {
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
+  'video/quicktime': 'mov',
+};
+
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024; // 25MB
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100MB
 
 // Short-lived presigned URL lifetimes. Uploads need only a few minutes; reads
 // are slightly longer so an open lightbox doesn't expire mid-view.
@@ -76,26 +83,35 @@ export class AttachmentsService {
   // Validates the request, creates a pending Attachment row, and returns a
   // short-lived presigned PUT URL the browser uploads to directly.
   async presignUpload(uploaderId: string, dto: PresignUploadDto) {
-    if (dto.kind !== 'image') {
+    if (dto.kind === 'audio' || dto.kind === 'file') {
       throw new BadRequestException(
-        `Only image attachments are supported right now (got "${dto.kind}").`,
+        `${dto.kind} attachments are not yet supported.`,
+      );
+    }
+    if (dto.kind !== 'image' && dto.kind !== 'video') {
+      throw new BadRequestException(
+        `Unsupported attachment kind "${dto.kind}".`,
       );
     }
 
-    const ext = IMAGE_MIME_EXT[dto.mime];
+    const mimeExt = dto.kind === 'video' ? VIDEO_MIME_EXT : IMAGE_MIME_EXT;
+    const maxBytes = dto.kind === 'video' ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+    const label = dto.kind === 'video' ? 'Video' : 'Image';
+
+    const ext = mimeExt[dto.mime];
     if (!ext) {
       throw new BadRequestException(
-        `Unsupported image type "${dto.mime}". Allowed: ${Object.keys(
-          IMAGE_MIME_EXT,
+        `Unsupported ${dto.kind} type "${dto.mime}". Allowed: ${Object.keys(
+          mimeExt,
         ).join(', ')}.`,
       );
     }
 
-    if (dto.sizeBytes > MAX_IMAGE_BYTES) {
+    if (dto.sizeBytes > maxBytes) {
       throw new BadRequestException(
-        `Image is too large (${(dto.sizeBytes / (1024 * 1024)).toFixed(
+        `${label} is too large (${(dto.sizeBytes / (1024 * 1024)).toFixed(
           1,
-        )}MB). Maximum is ${MAX_IMAGE_BYTES / (1024 * 1024)}MB.`,
+        )}MB). Maximum is ${maxBytes / (1024 * 1024)}MB.`,
       );
     }
 
@@ -104,12 +120,13 @@ export class AttachmentsService {
     const attachment = await this.prisma.attachment.create({
       data: {
         uploaderId,
-        kind: 'image',
+        kind: dto.kind,
         s3Key,
         mime: dto.mime,
         sizeBytes: dto.sizeBytes,
         width: dto.width ?? null,
         height: dto.height ?? null,
+        durationMs: dto.durationMs ?? null,
       },
     });
 
@@ -200,7 +217,7 @@ export class AttachmentsService {
         (err as Error).stack,
       );
       throw new BadRequestException(
-        'Could not load this image. Please try again.',
+        'Could not load this attachment. Please try again.',
       );
     }
 

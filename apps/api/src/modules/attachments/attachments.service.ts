@@ -98,6 +98,29 @@ export class AttachmentsService {
     }
   }
 
+  // Resolve a request mime to the stored mime + S3 extension for the given kind.
+  // Matching is on the base mime (codecs suffixes stripped). For audio we also
+  // accept a video/* container mime that is actually an audio-only recording
+  // (mobile MediaRecorder quirk) by mapping it to its audio equivalent. Returns
+  // null when the mime is not allowed for the kind.
+  private resolveMime(
+    kind: string,
+    rawMime: string,
+    mimeExt: Record<string, string>,
+  ): { mime: string; ext: string } | null {
+    let base = (rawMime || '').split(';')[0].trim().toLowerCase();
+
+    if (kind === 'audio' && base.startsWith('video/')) {
+      // e.g. video/webm -> audio/webm, video/mp4 -> audio/mp4
+      const candidate = base.replace(/^video\//, 'audio/');
+      base = mimeExt[candidate] ? candidate : base;
+    }
+
+    const ext = mimeExt[base];
+    if (!ext) return null;
+    return { mime: base, ext };
+  }
+
   // ── Presign upload ─────────────────────────────────────────────────────────
   // Validates the request, creates a pending Attachment row, and returns a
   // short-lived presigned PUT URL the browser uploads to directly.
@@ -130,14 +153,22 @@ export class AttachmentsService {
           ? 'Audio'
           : 'Image';
 
-    const ext = mimeExt[dto.mime];
-    if (!ext) {
+    // Resolve the stored mime + extension. Match on the BASE mime so a
+    // ";codecs=opus" suffix (MediaRecorder appends one) still resolves. For
+    // audio we also tolerate a video/* container mime — mobile MediaRecorder
+    // (esp. Samsung) reports e.g. "video/webm" for an audio-only recording.
+    // The explicit kind from the client is trusted: a recording with kind=audio
+    // is stored as audio regardless of the container mime so it renders with the
+    // compact audio player, not the video player.
+    const resolved = this.resolveMime(dto.kind, dto.mime, mimeExt);
+    if (!resolved) {
       throw new BadRequestException(
         `Unsupported ${dto.kind} type "${dto.mime}". Allowed: ${Object.keys(
           mimeExt,
         ).join(', ')}.`,
       );
     }
+    const { mime: storedMime, ext } = resolved;
 
     if (dto.sizeBytes > maxBytes) {
       throw new BadRequestException(
@@ -154,7 +185,7 @@ export class AttachmentsService {
         uploaderId,
         kind: dto.kind,
         s3Key,
-        mime: dto.mime,
+        mime: storedMime,
         sizeBytes: dto.sizeBytes,
         width: dto.width ?? null,
         height: dto.height ?? null,
@@ -169,7 +200,7 @@ export class AttachmentsService {
         new PutObjectCommand({
           Bucket: this.bucket,
           Key: s3Key,
-          ContentType: dto.mime,
+          ContentType: storedMime,
         }),
         { expiresIn: PUT_EXPIRES_SECONDS },
       );

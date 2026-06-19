@@ -1267,6 +1267,7 @@ function ChannelView({
   const messagesRef = useRef<ApiChannelMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
+  const [recording, setRecording] = useState(false);
   const [sending, setSending] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1542,39 +1543,44 @@ function ChannelView({
           <MicRecorderControl
             attachments={attachments}
             disabled={sending}
+            onRecordingChange={setRecording}
             onTranscribed={(text) =>
               setDraft((d) => (d ? `${d} ${text}` : text))
             }
           />
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                send(e);
-              }
-            }}
-            rows={1}
-            placeholder={`Message #${channel.name}  \u2014  @assistant for AI`}
-            className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 max-h-32 min-w-0"
-          />
-          <button
-            type="submit"
-            disabled={
-              (!draft.trim() && !attachments.hasPending) ||
-              sending ||
-              attachments.uploading
-            }
-            className="bg-amber-500 text-white rounded-xl p-2.5 hover:bg-amber-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-            aria-label="Send"
-          >
-            {sending ? (
-              <Loader2 className="animate-spin" size={18} />
-            ) : (
-              <Send size={18} />
-            )}
-          </button>
+          {!recording && (
+            <>
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    send(e);
+                  }
+                }}
+                rows={1}
+                placeholder={`Message #${channel.name}  \u2014  @assistant for AI`}
+                className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 max-h-32 min-w-0"
+              />
+              <button
+                type="submit"
+                disabled={
+                  (!draft.trim() && !attachments.hasPending) ||
+                  sending ||
+                  attachments.uploading
+                }
+                className="bg-amber-500 text-white rounded-xl p-2.5 hover:bg-amber-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                aria-label="Send"
+              >
+                {sending ? (
+                  <Loader2 className="animate-spin" size={18} />
+                ) : (
+                  <Send size={18} />
+                )}
+              </button>
+            </>
+          )}
         </form>
       </AttachmentDropZone>
     </div>
@@ -1902,6 +1908,7 @@ function ThreadView({
   const messagesRef = useRef<ApiDmMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
+  const [recording, setRecording] = useState(false);
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
@@ -2262,39 +2269,44 @@ function ThreadView({
           <MicRecorderControl
             attachments={attachments}
             disabled={sending}
+            onRecordingChange={setRecording}
             onTranscribed={(text) =>
               setDraft((d) => (d ? `${d} ${text}` : text))
             }
           />
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                send(e);
-              }
-            }}
-            rows={1}
-            placeholder={`Message ${userLabel(thread.otherUser)}...`}
-            className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 max-h-32 min-w-0"
-          />
-          <button
-            type="submit"
-            disabled={
-              (!draft.trim() && !attachments.hasPending) ||
-              sending ||
-              attachments.uploading
-            }
-            className="bg-amber-500 text-white rounded-xl p-2.5 hover:bg-amber-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-            aria-label="Send"
-          >
-            {sending ? (
-              <Loader2 className="animate-spin" size={18} />
-            ) : (
-              <Send size={18} />
-            )}
-          </button>
+          {!recording && (
+            <>
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    send(e);
+                  }
+                }}
+                rows={1}
+                placeholder={`Message ${userLabel(thread.otherUser)}...`}
+                className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 max-h-32 min-w-0"
+              />
+              <button
+                type="submit"
+                disabled={
+                  (!draft.trim() && !attachments.hasPending) ||
+                  sending ||
+                  attachments.uploading
+                }
+                className="bg-amber-500 text-white rounded-xl p-2.5 hover:bg-amber-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                aria-label="Send"
+              >
+                {sending ? (
+                  <Loader2 className="animate-spin" size={18} />
+                ) : (
+                  <Send size={18} />
+                )}
+              </button>
+            </>
+          )}
         </form>
       </AttachmentDropZone>
     </div>

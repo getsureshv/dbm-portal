@@ -68,6 +68,31 @@ export function isAllowedAudio(file: File): boolean {
   return ALLOWED_AUDIO_MIME.includes(base);
 }
 
+// A recorded voice memo is ALWAYS audio, but MediaRecorder on mobile browsers
+// (esp. Samsung/Chrome on Android) reports a `video/*` container mime for an
+// audio-only stream (e.g. `video/webm`, `video/mp4`). Map any such mime to its
+// audio equivalent and strip codecs suffixes so the presign + stored kind stay
+// audio. Falls back to audio/webm for anything unrecognized.
+export function normalizeAudioMime(mime: string): string {
+  const base = (mime || '').split(';')[0].trim().toLowerCase();
+  if (base.includes('mp4') || base.includes('m4a')) return 'audio/mp4';
+  if (base.includes('mpeg') || base.includes('mp3')) return 'audio/mpeg';
+  if (base.includes('wav')) return 'audio/wav';
+  if (base.includes('ogg')) return 'audio/ogg';
+  if (base.includes('webm')) return 'audio/webm';
+  if (base.startsWith('audio/')) return base;
+  return 'audio/webm';
+}
+
+function audioExtForMime(mime: string): string {
+  const base = mime.split(';')[0].trim().toLowerCase();
+  if (base.includes('mp4') || base.includes('m4a')) return 'm4a';
+  if (base.includes('mpeg') || base.includes('mp3')) return 'mp3';
+  if (base.includes('wav')) return 'wav';
+  if (base.includes('ogg')) return 'ogg';
+  return 'webm';
+}
+
 // Classify a picked file into an upload kind, or null if unsupported.
 function classifyFile(file: File): UploadKind | null {
   if (isAllowedImage(file)) return 'image';
@@ -423,17 +448,11 @@ export function useAttachments(): UseAttachments {
 
   const addRecording = useCallback(
     (blob: Blob, mime: string, durationMs: number) => {
-      const base = mime.split(';')[0].trim().toLowerCase();
-      const ext = base.includes('mp4') || base.includes('m4a')
-        ? 'm4a'
-        : base.includes('mpeg') || base.includes('mp3')
-          ? 'mp3'
-          : base.includes('wav')
-            ? 'wav'
-            : base.includes('ogg')
-              ? 'ogg'
-              : 'webm';
-      const file = new File([blob], `voice-memo.${ext}`, { type: base });
+      // Always treat a recording as audio, even when MediaRecorder reports a
+      // video/* container mime for an audio-only stream (common on Samsung).
+      const audioMime = normalizeAudioMime(mime);
+      const ext = audioExtForMime(audioMime);
+      const file = new File([blob], `voice-memo.${ext}`, { type: audioMime });
       const item: PendingAttachment = {
         localId: nextLocalId(),
         file,
@@ -518,24 +537,17 @@ export async function uploadAudioBlob(
   mime: string,
   durationMs: number,
 ): Promise<{ attachmentId: string }> {
-  const base = mime.split(';')[0].trim().toLowerCase();
-  const ext = base.includes('mp4') || base.includes('m4a')
-    ? 'm4a'
-    : base.includes('mpeg') || base.includes('mp3')
-      ? 'mp3'
-      : base.includes('wav')
-        ? 'wav'
-        : base.includes('ogg')
-          ? 'ogg'
-          : 'webm';
+  // Normalize a video/* container mime (mobile MediaRecorder quirk) to audio/*.
+  const audioMime = normalizeAudioMime(mime);
+  const ext = audioExtForMime(audioMime);
   const presign = await attachmentsApi.presignUpload({
     kind: 'audio',
-    mime: base,
+    mime: audioMime,
     sizeBytes: blob.size,
     fileName: `recording.${ext}`,
     durationMs: durationMs > 0 ? durationMs : undefined,
   });
-  const file = new File([blob], `recording.${ext}`, { type: base });
+  const file = new File([blob], `recording.${ext}`, { type: audioMime });
   const { promise } = putToR2(presign.uploadUrl, file, () => {});
   await promise;
   return { attachmentId: presign.attachmentId };
@@ -1050,16 +1062,27 @@ export function MicRecorderControl({
   attachments,
   onTranscribed,
   disabled,
+  onRecordingChange,
 }: {
   attachments: UseAttachments;
   // Called in STT mode with the transcript; the composer appends it to its input.
   onTranscribed: (text: string) => void;
   disabled?: boolean;
+  // Notifies the composer when active recording starts/stops so it can give the
+  // recording controls room (hide the textarea/send) — keeps the Stop button
+  // from being clipped off a narrow composer on mobile.
+  onRecordingChange?: (recording: boolean) => void;
 }) {
   const [mode, setMode] = useState<RecordMode>('voice');
   const [phase, setPhase] = useState<RecorderPhase>('idle');
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+  const onRecordingChangeRef = useRef(onRecordingChange);
+  onRecordingChangeRef.current = onRecordingChange;
+  useEffect(() => {
+    onRecordingChangeRef.current?.(phase === 'recording');
+  }, [phase]);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -1321,32 +1344,40 @@ export function MicRecorderControl({
   const near = elapsed >= RECORDING_WARN_MS;
 
   if (phase === 'recording') {
+    // Full-width, mobile-safe row: trash + timer shrink (min-w-0), while the
+    // Stop button never shrinks (flex-shrink-0) so it stays visible and tappable
+    // on a narrow composer (e.g. Samsung Z Fold cover screen). The composer
+    // hides its textarea/send while recording (via onRecordingChange) so this
+    // row owns the full width and Stop can't be clipped off the right edge.
     return (
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex w-full items-center gap-2 min-w-0">
         <button
           type="button"
           onClick={cancel}
           aria-label="Cancel recording"
-          className="p-2 text-gray-400 hover:text-red-600"
+          className="flex-shrink-0 p-2 text-gray-400 hover:text-red-600"
         >
           <Trash2 size={18} />
         </button>
         <span
-          className={`text-xs tabular-nums font-medium ${
+          className={`flex-1 min-w-0 flex items-center text-xs tabular-nums font-medium ${
             near ? 'text-red-600' : 'text-gray-600'
           }`}
         >
-          <span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1.5 animate-pulse align-middle" />
-          {fmtElapsed(elapsed)}
-          {near && ' / 5:00'}
+          <span className="inline-block flex-shrink-0 w-2 h-2 rounded-full bg-red-500 mr-1.5 animate-pulse align-middle" />
+          <span className="truncate">
+            {fmtElapsed(elapsed)}
+            {near && ' / 5:00'}
+          </span>
         </span>
         <button
           type="button"
           onClick={stop}
           aria-label="Stop recording"
-          className="p-2 rounded-full bg-red-500 text-white hover:bg-red-600"
+          className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-red-500 text-white text-xs font-medium hover:bg-red-600"
         >
           <Square size={16} />
+          Stop
         </button>
       </div>
     );

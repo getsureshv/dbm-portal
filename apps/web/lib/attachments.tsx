@@ -1066,6 +1066,19 @@ export function MicRecorderControl({
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Mirror `mode` into a ref so the recorder's onstop closure (captured at
+  // start time) reads the mode that's live WHEN the recording stops, not a
+  // value frozen at start. Avoids voice/text mix-ups from stale closures.
+  const modeRef = useRef<RecordMode>('voice');
+  modeRef.current = mode;
+  // Mirror the latest attachments hook so onstop never reaches a stale
+  // addRecording after a parent re-render swapped the hook object identity.
+  const attachmentsRef = useRef(attachments);
+  attachmentsRef.current = attachments;
+  // Mirror onTranscribed for the same reason (it's an inline closure in the
+  // composer that changes identity on every parent render).
+  const onTranscribedRef = useRef(onTranscribed);
+  onTranscribedRef.current = onTranscribed;
   // The blob produced on stop, used by STT recovery (retry / send as memo).
   const lastBlobRef = useRef<{ blob: Blob; mime: string; durationMs: number } | null>(
     null,
@@ -1094,32 +1107,6 @@ export function MicRecorderControl({
     };
   }, []);
 
-  // Handle the recorded blob once recording stops (not on cancel).
-  const handleStopped = useCallback(
-    async (mime: string, durationMs: number) => {
-      const blob = new Blob(chunksRef.current, { type: mime });
-      chunksRef.current = [];
-      if (blob.size === 0) {
-        setPhase('idle');
-        setError('Recording was empty. Please try again.');
-        return;
-      }
-      lastBlobRef.current = { blob, mime, durationMs };
-
-      if (mode === 'voice') {
-        // Stage as a message attachment.
-        attachments.addRecording(blob, mime, durationMs);
-        setPhase('idle');
-        return;
-      }
-
-      // STT mode: upload + transcribe.
-      await runTranscription(blob, mime, durationMs);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mode, attachments],
-  );
-
   const runTranscription = useCallback(
     async (blob: Blob, mime: string, durationMs: number) => {
       setPhase('processing');
@@ -1132,18 +1119,46 @@ export function MicRecorderControl({
           setError('No speech detected. Retry, or send it as a voice memo.');
           return;
         }
-        onTranscribed(text);
+        onTranscribedRef.current(text);
         lastBlobRef.current = null;
         setPhase('idle');
       } catch (err) {
         // Keep the recording; offer recovery options. Surface the real error.
+        console.error('[MicRecorder] transcription failed', err);
         const message =
           err instanceof Error ? err.message : 'Transcription failed.';
         setPhase('recovery');
         setError(message);
       }
     },
-    [onTranscribed],
+    [],
+  );
+
+  // Handle the recorded blob once recording stops (not on cancel). Reads mode
+  // and attachments from refs so this stays a stable callback and never sees a
+  // value staled by a parent re-render between start and stop.
+  const handleStopped = useCallback(
+    async (mime: string, durationMs: number) => {
+      const blob = new Blob(chunksRef.current, { type: mime });
+      chunksRef.current = [];
+      if (blob.size === 0) {
+        setPhase('idle');
+        setError('Recording was empty. Please try again.');
+        return;
+      }
+      lastBlobRef.current = { blob, mime, durationMs };
+
+      if (modeRef.current === 'voice') {
+        // Stage as a message attachment.
+        attachmentsRef.current.addRecording(blob, mime, durationMs);
+        setPhase('idle');
+        return;
+      }
+
+      // STT mode: upload + transcribe.
+      await runTranscription(blob, mime, durationMs);
+    },
+    [runTranscription],
   );
 
   const start = useCallback(async () => {
@@ -1161,8 +1176,9 @@ export function MicRecorderControl({
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
+    } catch (err) {
       // Permission denied or no mic — fall back to file upload.
+      console.error('[MicRecorder] getUserMedia failed', err);
       setError(
         'Microphone access was blocked. Allow it in your browser, or use the attach button to upload an audio file.',
       );
@@ -1171,49 +1187,88 @@ export function MicRecorderControl({
     streamRef.current = stream;
     chunksRef.current = [];
     cancelledRef.current = false;
-    const mime = pickRecorderMime();
-    let recorder: MediaRecorder;
-    try {
-      recorder = mime
-        ? new MediaRecorder(stream, { mimeType: mime })
-        : new MediaRecorder(stream);
-    } catch {
-      recorder = new MediaRecorder(stream);
-    }
-    recorderRef.current = recorder;
-    const actualMime = recorder.mimeType || mime || 'audio/webm';
 
-    recorder.ondataavailable = (e) => {
-      if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
-    };
-    recorder.onstop = () => {
-      clearTimer();
-      releaseStream();
-      const durationMs = Date.now() - startedAtRef.current;
-      if (cancelledRef.current) {
+    // Everything from here can throw (MediaRecorder construction, .start()) and
+    // on some mobile browsers it does. Without this guard a throw would leave
+    // the mic stream live (acquired above) while phase stayed 'idle' — exactly
+    // the "keeps recording, no Stop button, no error" symptom. So on ANY
+    // failure: release the stream, reset, and surface a visible message.
+    try {
+      const mime = pickRecorderMime();
+      let recorder: MediaRecorder;
+      try {
+        recorder = mime
+          ? new MediaRecorder(stream, { mimeType: mime })
+          : new MediaRecorder(stream);
+      } catch (ctorErr) {
+        console.error(
+          '[MicRecorder] MediaRecorder ctor with mime failed, retrying default',
+          ctorErr,
+        );
+        recorder = new MediaRecorder(stream);
+      }
+      recorderRef.current = recorder;
+      const actualMime = recorder.mimeType || mime || 'audio/webm';
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      recorder.onerror = (e) => {
+        console.error('[MicRecorder] recorder error', e);
+        clearTimer();
+        releaseStream();
+        recorderRef.current = null;
         chunksRef.current = [];
+        cancelledRef.current = true; // ignore the onstop that follows
         setPhase('idle');
         setElapsed(0);
-        return;
-      }
-      void handleStopped(actualMime, durationMs);
-      setElapsed(0);
-    };
-
-    startedAtRef.current = Date.now();
-    recorder.start();
-    setPhase('recording');
-    setElapsed(0);
-    timerRef.current = setInterval(() => {
-      const ms = Date.now() - startedAtRef.current;
-      setElapsed(ms);
-      if (ms >= MAX_RECORDING_MS) {
-        // Auto-stop at the cap.
-        if (recorderRef.current && recorderRef.current.state !== 'inactive') {
-          recorderRef.current.stop();
+        setError('Recording failed. Please try again.');
+      };
+      recorder.onstop = () => {
+        clearTimer();
+        releaseStream();
+        recorderRef.current = null;
+        const durationMs = Date.now() - startedAtRef.current;
+        if (cancelledRef.current) {
+          chunksRef.current = [];
+          setPhase('idle');
+          setElapsed(0);
+          return;
         }
-      }
-    }, 250);
+        void handleStopped(actualMime, durationMs);
+        setElapsed(0);
+      };
+
+      startedAtRef.current = Date.now();
+      // Pass a timeslice so MediaRecorder emits chunks periodically. Several
+      // mobile browsers (incl. Samsung Internet) don't reliably deliver a final
+      // ondataavailable on stop() without one, which otherwise yields an empty
+      // blob ("Recording was empty").
+      recorder.start(1000);
+      setPhase('recording');
+      setElapsed(0);
+      timerRef.current = setInterval(() => {
+        const ms = Date.now() - startedAtRef.current;
+        setElapsed(ms);
+        if (ms >= MAX_RECORDING_MS) {
+          // Auto-stop at the cap.
+          if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+            recorderRef.current.stop();
+          }
+        }
+      }, 250);
+    } catch (err) {
+      console.error('[MicRecorder] failed to start recording', err);
+      clearTimer();
+      releaseStream();
+      recorderRef.current = null;
+      chunksRef.current = [];
+      setPhase('idle');
+      setElapsed(0);
+      setError(
+        'Could not start recording on this device. Use the attach button to upload an audio file instead.',
+      );
+    }
   }, [handleStopped]);
 
   const stop = useCallback(() => {
@@ -1249,12 +1304,12 @@ export function MicRecorderControl({
   const sendAsVoiceMemo = useCallback(() => {
     const last = lastBlobRef.current;
     if (last) {
-      attachments.addRecording(last.blob, last.mime, last.durationMs);
+      attachmentsRef.current.addRecording(last.blob, last.mime, last.durationMs);
     }
     lastBlobRef.current = null;
     setError(null);
     setPhase('idle');
-  }, [attachments]);
+  }, []);
 
   const dismissRecovery = useCallback(() => {
     lastBlobRef.current = null;

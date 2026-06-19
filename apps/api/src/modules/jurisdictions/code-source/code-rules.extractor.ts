@@ -13,8 +13,28 @@
  * the existing chat.service degradation pattern.
  */
 import * as zlib from 'node:zlib';
-import type Anthropic from '@anthropic-ai/sdk';
 import type { CodeSourceDoc } from './code-source.resolver';
+
+/**
+ * Minimal structural shape this extractor needs from an Anthropic client.
+ * The real runtime adapter (native-fetch backed, see jurisdictions.service)
+ * and the unit-test mocks both satisfy this — we no longer depend on the
+ * @anthropic-ai/sdk types, which would otherwise drag in the broken
+ * node-fetch@2 transport.
+ */
+interface AnthropicTextBlockLike {
+  type: string;
+  text?: string;
+}
+export interface AnthropicLike {
+  messages: {
+    create(args: {
+      model: string;
+      max_tokens: number;
+      messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+    }): Promise<{ content: AnthropicTextBlockLike[] }>;
+  };
+}
 
 export type CodeFamilyLike =
   | 'IBC'
@@ -364,7 +384,7 @@ export function parseExtractedRules(
 
 /** Run one LLM extraction over a single source's text. Never throws → []. */
 async function extractFromText(
-  anthropic: Anthropic,
+  anthropic: AnthropicLike,
   cityName: string,
   scope: string | undefined,
   sourceUrl: string,
@@ -379,8 +399,8 @@ async function extractFromText(
       messages: [{ role: 'user', content: prompt }],
     });
     const text = msg.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map((b) => b.text)
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text ?? '')
       .join('\n');
     return parseExtractedRules(text, sourceUrl, scope);
   } catch {
@@ -397,7 +417,7 @@ async function extractFromText(
  * rule carries the correct source URL/citation. Results are merged + de-duped.
  */
 export async function extractRules(params: {
-  anthropic: Anthropic | null;
+  anthropic: AnthropicLike | null;
   cityName: string;
   scope?: string;
   sourceUrl?: string;

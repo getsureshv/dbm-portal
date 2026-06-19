@@ -8,11 +8,11 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../common/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
-import Anthropic from '@anthropic-ai/sdk';
+import { callAnthropic, AnthropicContentBlock } from '../../common/anthropic';
 
 @Injectable()
 export class DocumentsService {
-  private anthropic: Anthropic | null = null;
+  private apiKey: string | null = null;
 
   constructor(
     private prisma: PrismaService,
@@ -21,7 +21,7 @@ export class DocumentsService {
   ) {
     const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
     if (apiKey) {
-      this.anthropic = new Anthropic({ apiKey });
+      this.apiKey = apiKey;
     } else {
       console.warn(
         'ANTHROPIC_API_KEY not configured — document scanning features will be unavailable',
@@ -33,7 +33,7 @@ export class DocumentsService {
     documentId: string,
     userId: string,
   ): Promise<{ id: string; filename: string; extractedText: string }> {
-    if (!this.anthropic) {
+    if (!this.apiKey) {
       throw new HttpException(
         'AI document scanning is not configured. Set ANTHROPIC_API_KEY to enable.',
         HttpStatus.SERVICE_UNAVAILABLE,
@@ -103,9 +103,7 @@ export class DocumentsService {
     const base64Data = body.toString('base64');
 
     // Build the content blocks for Claude
-    // Note: The SDK types (v0.30.1) don't include 'document' blocks,
-    // but the API supports them. We use 'any' for PDF document blocks.
-    const contentBlocks: any[] = [];
+    const contentBlocks: AnthropicContentBlock[] = [];
 
     if (isPdf) {
       contentBlocks.push({
@@ -144,24 +142,29 @@ export class DocumentsService {
     });
 
     // Call Claude API
-    const response = await this.anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      system:
-        'You are a construction document analyst. Extract all text content from this document. Organize the extracted information clearly with headings. For construction documents, identify: project details, scope items, specifications, quantities, costs, dates, parties involved, and any terms or conditions. Return the extracted text in a clean, readable format.',
-      messages: [
-        {
-          role: 'user',
-          content: contentBlocks,
-        },
-      ],
-    });
-
-    // Extract text from the response
-    const extractedText = response.content
-      .filter((block) => block.type === 'text')
-      .map((block) => (block as { type: 'text'; text: string }).text)
-      .join('\n');
+    let extractedText: string;
+    try {
+      const result = await callAnthropic({
+        apiKey: this.apiKey,
+        model: 'claude-sonnet-4-6',
+        maxTokens: 4096,
+        system:
+          'You are a construction document analyst. Extract all text content from this document. Organize the extracted information clearly with headings. For construction documents, identify: project details, scope items, specifications, quantities, costs, dates, parties involved, and any terms or conditions. Return the extracted text in a clean, readable format.',
+        messages: [
+          {
+            role: 'user',
+            content: contentBlocks,
+          },
+        ],
+      });
+      extractedText = result.text;
+    } catch (err: any) {
+      console.error('Document scan error:', err?.message ?? err);
+      throw new HttpException(
+        'AI document scanning failed. Please try again.',
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
 
     // Save extracted text to database
     await this.prisma.projectDocument.update({
@@ -247,7 +250,7 @@ export class DocumentsService {
       filledFields: string[];
     };
   }> {
-    if (!this.anthropic) {
+    if (!this.apiKey) {
       throw new HttpException(
         'AI document conversion is not configured. Set ANTHROPIC_API_KEY to enable.',
         HttpStatus.SERVICE_UNAVAILABLE,
@@ -326,23 +329,28 @@ Respond with ONLY valid JSON, no prose, no code fences:
   }
 }`;
 
-    const response = await this.anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: [
-        {
-          role: 'user',
-          content: `Filename: ${doc.filename}\n\nExtracted text:\n\n${extractedText.slice(0, 60000)}`,
-        },
-      ],
-    });
-
-    const raw = response.content
-      .filter((b) => b.type === 'text')
-      .map((b) => (b as { type: 'text'; text: string }).text)
-      .join('\n')
-      .trim();
+    let raw: string;
+    try {
+      const result = await callAnthropic({
+        apiKey: this.apiKey,
+        model: 'claude-sonnet-4-6',
+        maxTokens: 4096,
+        system: systemPrompt,
+        messages: [
+          {
+            role: 'user',
+            content: `Filename: ${doc.filename}\n\nExtracted text:\n\n${extractedText.slice(0, 60000)}`,
+          },
+        ],
+      });
+      raw = result.text.trim();
+    } catch (err: any) {
+      console.error('Document conversion error:', err?.message ?? err);
+      throw new HttpException(
+        'AI document conversion failed. Please try again.',
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
 
     let parsed: any;
     try {

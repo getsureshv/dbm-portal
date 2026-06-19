@@ -2,7 +2,7 @@ import { Injectable, HttpException, HttpStatus, NotFoundException } from '@nestj
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../common/prisma.service';
 import { Response } from 'express';
-import Anthropic from '@anthropic-ai/sdk';
+import { callAnthropic, AnthropicMessage } from '../../common/anthropic';
 import { JurisdictionsService } from '../jurisdictions/jurisdictions.service';
 import type { CodeRule, Jurisdiction, Permit } from '@prisma/client';
 
@@ -134,7 +134,7 @@ function getLanguageName(code: string): string {
 
 @Injectable()
 export class ChatService {
-  private anthropic: Anthropic | null = null;
+  private apiKey: string | null = null;
 
   constructor(
     private configService: ConfigService,
@@ -143,7 +143,7 @@ export class ChatService {
   ) {
     const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
     if (apiKey) {
-      this.anthropic = new Anthropic({ apiKey });
+      this.apiKey = apiKey;
     } else {
       console.warn('ANTHROPIC_API_KEY not configured — AI chat features will be unavailable');
     }
@@ -155,7 +155,7 @@ export class ChatService {
     userMessage: string,
     res: Response,
   ): Promise<void> {
-    if (!this.anthropic) {
+    if (!this.apiKey) {
       res.status(503).json({ error: 'AI chat is not configured. Set ANTHROPIC_API_KEY to enable.' });
       return;
     }
@@ -249,7 +249,7 @@ export class ChatService {
       }
 
       // Build conversation history from previous turns
-      const conversationHistory: Anthropic.Messages.MessageParam[] =
+      const conversationHistory: AnthropicMessage[] =
         scopeDocument.interviewTurns
           .map((turn) => [
             { role: 'user' as const, content: turn.questionText },
@@ -263,35 +263,24 @@ export class ChatService {
         content: userMessage,
       });
 
-      // Stream response from Claude
-      let fullResponse = '';
-
-      const stream = await this.anthropic.messages.create({
+      // Single non-streaming request to Claude (native fetch). The SSE
+      // protocol to the frontend is unchanged: we emit the full reply as one
+      // text_delta, then the completion event below.
+      const { text: fullResponse } = await callAnthropic({
+        apiKey: this.apiKey,
         model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
+        maxTokens: 1024,
         system: systemPrompt,
         messages: conversationHistory,
-        stream: true,
       });
 
-      // Process stream — send text deltas but buffer scope_update tags
-      for await (const event of stream) {
-        if (
-          event.type === 'content_block_delta' &&
-          event.delta.type === 'text_delta'
-        ) {
-          const text = event.delta.text;
-          fullResponse += text;
-
-          // Send text delta to client (frontend will strip tags)
-          res.write(
-            `data: ${JSON.stringify({
-              type: 'text_delta',
-              content: text,
-            })}\n\n`,
-          );
-        }
-      }
+      // Send text delta to client (frontend will strip tags)
+      res.write(
+        `data: ${JSON.stringify({
+          type: 'text_delta',
+          content: fullResponse,
+        })}\n\n`,
+      );
 
       // Extract scope updates from the complete response
       const fieldUpdates = this.extractScopeUpdates(fullResponse);
@@ -338,6 +327,7 @@ export class ChatService {
 
       res.end();
     } catch (error: any) {
+      console.error('Scope Architect chat error:', error?.message ?? error);
       if (!res.headersSent) {
         throw error;
       }

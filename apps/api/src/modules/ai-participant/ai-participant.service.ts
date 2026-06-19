@@ -1,6 +1,6 @@
 import { Injectable, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Anthropic from '@anthropic-ai/sdk';
+import { callAnthropic } from '../../common/anthropic';
 import { PrismaService } from '../../common/prisma.service';
 import { ProjectsService } from '../projects/projects.service';
 import { ChannelsService } from '../channels/channels.service';
@@ -11,7 +11,7 @@ Be concise, friendly, and helpful about construction project management, scope o
 
 @Injectable()
 export class AiParticipantService {
-  private anthropic: Anthropic | null = null;
+  private apiKey: string | null = null;
   // Current Sonnet — better for chat replies. Overridable via env.
   private readonly model = process.env.AI_MODEL || 'claude-sonnet-4-6';
 
@@ -23,7 +23,7 @@ export class AiParticipantService {
   ) {
     const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
     if (apiKey) {
-      this.anthropic = new Anthropic({ apiKey });
+      this.apiKey = apiKey;
     } else {
       console.warn(
         'ANTHROPIC_API_KEY not configured — AI participant features will be unavailable',
@@ -37,7 +37,7 @@ export class AiParticipantService {
     prompt: string,
   ) {
     // Fallback: Anthropic not configured
-    if (!this.anthropic) {
+    if (!this.apiKey) {
       return this.projectsService.addAiMessage(
         projectId,
         'The AI assistant is not configured. Please ask your administrator to set the ANTHROPIC_API_KEY environment variable.',
@@ -72,18 +72,15 @@ export class AiParticipantService {
       : `User's question: ${prompt}`;
 
     try {
-      const response = await this.anthropic.messages.create({
+      const { text: responseText } = await callAnthropic({
+        apiKey: this.apiKey,
         model: this.model,
-        max_tokens: 1024,
+        maxTokens: 1024,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userContent }],
-        stream: false,
       });
 
-      const textBlock = response.content.find((b) => b.type === 'text');
-      const text = textBlock && textBlock.type === 'text'
-        ? textBlock.text
-        : 'Sorry, I could not generate a response.';
+      const text = responseText || 'Sorry, I could not generate a response.';
 
       return this.projectsService.addAiMessage(projectId, text);
     } catch (err: any) {
@@ -107,7 +104,7 @@ export class AiParticipantService {
     }
 
     // Fallback: Anthropic not configured
-    if (!this.anthropic) {
+    if (!this.apiKey) {
       return this.channelsService.addAiMessage(
         channelId,
         'The AI assistant is not configured. Please ask your administrator to set the ANTHROPIC_API_KEY environment variable.',
@@ -142,18 +139,15 @@ export class AiParticipantService {
       : `User's question: ${prompt}`;
 
     try {
-      const response = await this.anthropic.messages.create({
+      const { text: responseText } = await callAnthropic({
+        apiKey: this.apiKey,
         model: this.model,
-        max_tokens: 1024,
+        maxTokens: 1024,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userContent }],
-        stream: false,
       });
 
-      const textBlock = response.content.find((b) => b.type === 'text');
-      const text = textBlock && textBlock.type === 'text'
-        ? textBlock.text
-        : 'Sorry, I could not generate a response.';
+      const text = responseText || 'Sorry, I could not generate a response.';
 
       return this.channelsService.addAiMessage(channelId, text);
     } catch (err: any) {

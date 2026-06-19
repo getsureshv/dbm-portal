@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Anthropic from '@anthropic-ai/sdk';
+import { callAnthropic } from '../../common/anthropic';
 import {
   CodeRule,
   Jurisdiction,
@@ -12,7 +12,7 @@ import {
   resolveCodeSources,
   orderDocsForScope,
 } from './code-source/code-source.resolver';
-import { extractRules } from './code-source/code-rules.extractor';
+import { extractRules, AnthropicLike } from './code-source/code-rules.extractor';
 import {
   AdapterConfig,
   JurisdictionAdapter,
@@ -28,7 +28,7 @@ import { SocrataAdapter } from './adapters/socrata.adapter';
 export class JurisdictionsService {
   private readonly logger = new Logger(JurisdictionsService.name);
 
-  private readonly anthropic: Anthropic | null = null;
+  private readonly anthropic: AnthropicLike | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -42,11 +42,28 @@ export class JurisdictionsService {
     // arguments") and breaks `nest build`.
     const fromConfig = this.config?.get('ANTHROPIC_API_KEY') as string | undefined;
     const apiKey = fromConfig ?? process.env.ANTHROPIC_API_KEY;
-    if (apiKey) this.anthropic = new Anthropic({ apiKey });
-    else
+    if (apiKey) {
+      // Native-fetch adapter conforming to the shape the extractor needs.
+      // Bypasses @anthropic-ai/sdk's node-fetch@2 transport (which fails with
+      // ERR_STREAM_PREMATURE_CLOSE on Node 22's gzip handling).
+      this.anthropic = {
+        messages: {
+          create: async (args) => {
+            const { raw } = await callAnthropic({
+              apiKey,
+              model: args.model,
+              maxTokens: args.max_tokens,
+              messages: args.messages,
+            });
+            return { content: (raw.content ?? []) as { type: string; text?: string }[] };
+          },
+        },
+      };
+    } else {
       this.logger.warn(
         'ANTHROPIC_API_KEY not set — dynamic code-rule extraction disabled (seeded rules still served).',
       );
+    }
   }
 
   /** All jurisdictions, lightweight rows for dropdowns. */

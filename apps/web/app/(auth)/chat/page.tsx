@@ -55,6 +55,7 @@ import {
   PendingAttachments,
   AttachmentDropZone,
   MessageAttachments,
+  MicRecorderControl,
 } from '../../../lib/attachments';
 
 // ---- small shared helpers --------------------------------------------------
@@ -1538,6 +1539,13 @@ function ChannelView({
             onPick={(files) => attachments.addFiles(files)}
             disabled={sending}
           />
+          <MicRecorderControl
+            attachments={attachments}
+            disabled={sending}
+            onTranscribed={(text) =>
+              setDraft((d) => (d ? `${d} ${text}` : text))
+            }
+          />
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -2250,6 +2258,13 @@ function ThreadView({
           <AttachmentPickerButton
             onPick={(files) => attachments.addFiles(files)}
             disabled={sending}
+          />
+          <MicRecorderControl
+            attachments={attachments}
+            disabled={sending}
+            onTranscribed={(text) =>
+              setDraft((d) => (d ? `${d} ${text}` : text))
+            }
           />
           <textarea
             value={draft}

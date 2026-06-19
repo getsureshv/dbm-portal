@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
+  BadGatewayException,
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -16,6 +17,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { PrismaService } from '../../common/prisma.service';
 import { PresignUploadDto } from './dto/presign-upload.dto';
+import { transcribeAudio } from '../../common/whisper';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -35,8 +37,25 @@ const VIDEO_MIME_EXT: Record<string, string> = {
   'video/quicktime': 'mov',
 };
 
+// Audio (voice memos + speech-to-text recordings). Be lenient about common
+// variants — MediaRecorder and mobile browsers report several spellings for
+// the same container. Whisper accepts all of these.
+const AUDIO_MIME_EXT: Record<string, string> = {
+  'audio/webm': 'webm',
+  'audio/mp4': 'm4a',
+  'audio/m4a': 'm4a',
+  'audio/x-m4a': 'm4a',
+  'audio/mpeg': 'mp3',
+  'audio/mp3': 'mp3',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+  'audio/wave': 'wav',
+  'audio/ogg': 'ogg',
+};
+
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024; // 25MB
 const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100MB
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // 25MB
 
 // Short-lived presigned URL lifetimes. Uploads need only a few minutes; reads
 // are slightly longer so an open lightbox doesn't expire mid-view.
@@ -83,20 +102,33 @@ export class AttachmentsService {
   // Validates the request, creates a pending Attachment row, and returns a
   // short-lived presigned PUT URL the browser uploads to directly.
   async presignUpload(uploaderId: string, dto: PresignUploadDto) {
-    if (dto.kind === 'audio' || dto.kind === 'file') {
-      throw new BadRequestException(
-        `${dto.kind} attachments are not yet supported.`,
-      );
+    if (dto.kind === 'file') {
+      throw new BadRequestException('file attachments are not yet supported.');
     }
-    if (dto.kind !== 'image' && dto.kind !== 'video') {
+    if (dto.kind !== 'image' && dto.kind !== 'video' && dto.kind !== 'audio') {
       throw new BadRequestException(
         `Unsupported attachment kind "${dto.kind}".`,
       );
     }
 
-    const mimeExt = dto.kind === 'video' ? VIDEO_MIME_EXT : IMAGE_MIME_EXT;
-    const maxBytes = dto.kind === 'video' ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
-    const label = dto.kind === 'video' ? 'Video' : 'Image';
+    const mimeExt =
+      dto.kind === 'video'
+        ? VIDEO_MIME_EXT
+        : dto.kind === 'audio'
+          ? AUDIO_MIME_EXT
+          : IMAGE_MIME_EXT;
+    const maxBytes =
+      dto.kind === 'video'
+        ? MAX_VIDEO_BYTES
+        : dto.kind === 'audio'
+          ? MAX_AUDIO_BYTES
+          : MAX_IMAGE_BYTES;
+    const label =
+      dto.kind === 'video'
+        ? 'Video'
+        : dto.kind === 'audio'
+          ? 'Audio'
+          : 'Image';
 
     const ext = mimeExt[dto.mime];
     if (!ext) {
@@ -185,6 +217,83 @@ export class AttachmentsService {
       );
       throw new BadRequestException(
         'Upload could not be verified. Please try uploading again.',
+      );
+    }
+  }
+
+  // ── Transcribe (speech-to-text via OpenAI Whisper) ─────────────────────────
+  // Fetches the just-uploaded audio object from R2 and sends it to Whisper.
+  // Access: only the uploader of a still-pending audio attachment may transcribe
+  // it (the recording was made by them and is not yet a sent message). Returns
+  // the transcript text for the client to edit before sending. The audio is NOT
+  // kept as a message attachment in STT mode — the caller drops the pending row.
+  async transcribe(attachmentId: string, userId: string) {
+    const attachment = await this.getOwnPendingOrThrow(attachmentId, userId);
+
+    if (attachment.kind !== 'audio') {
+      throw new BadRequestException('Only audio attachments can be transcribed.');
+    }
+
+    const apiKey = this.config.get<string>('OPENAI_API_KEY');
+    if (!apiKey) {
+      // Real configuration problem — log it and surface a clear message rather
+      // than a silent generic "unavailable".
+      this.logger.error('OPENAI_API_KEY not configured — cannot transcribe.');
+      throw new BadGatewayException(
+        'Transcription is not configured. Please ask your administrator to set OPENAI_API_KEY.',
+      );
+    }
+
+    // 1) Download the object bytes from R2.
+    let audio: Buffer;
+    try {
+      const obj = await this.s3.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: attachment.s3Key }),
+      );
+      const body = obj.Body as
+        | { transformToByteArray?: () => Promise<Uint8Array> }
+        | undefined;
+      if (!body?.transformToByteArray) {
+        throw new Error('R2 GetObject returned an empty body.');
+      }
+      audio = Buffer.from(await body.transformToByteArray());
+    } catch (err) {
+      this.logger.error(
+        `Failed to read audio object ${attachment.s3Key} from R2: ${
+          (err as Error).message
+        }`,
+        (err as Error).stack,
+      );
+      throw new BadGatewayException(
+        'Could not read the recording for transcription. Please try again.',
+      );
+    }
+
+    // 2) Send to OpenAI Whisper.
+    const model =
+      this.config.get<string>('WHISPER_MODEL') || 'whisper-1';
+    const baseUrl = this.config.get<string>('OPENAI_API_BASE') || undefined;
+    const ext = attachment.s3Key.split('.').pop() || 'webm';
+    try {
+      const { text } = await transcribeAudio({
+        apiKey,
+        audio,
+        fileName: `recording.${ext}`,
+        mime: attachment.mime,
+        model,
+        baseUrl,
+      });
+      return { text: text.trim() };
+    } catch (err) {
+      // Log the REAL OpenAI error (status + body) server-side.
+      this.logger.error(
+        `Whisper transcription failed for ${attachment.s3Key}: ${
+          (err as Error).message
+        }`,
+        (err as Error).stack,
+      );
+      throw new BadGatewayException(
+        'Transcription failed. Please try again or send your recording as a voice memo.',
       );
     }
   }

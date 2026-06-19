@@ -1351,4 +1351,11 @@ export const attachments = {
     request<{ url: string; expiresInSeconds: number }>(
       `/attachments/${id}/url`,
     ),
+
+  // Speech-to-text: server fetches the pending audio object from R2 and runs it
+  // through OpenAI Whisper, returning the transcript for the user to edit.
+  transcribe: (id: string) =>
+    request<{ text: string }>(`/attachments/${id}/transcribe`, {
+      method: 'POST',
+    }),
 };

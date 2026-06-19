@@ -31,6 +31,14 @@ export class AttachmentsController {
     return this.attachments.confirmUpload(id, req.userId);
   }
 
+  @Post(':id/transcribe')
+  @ApiOperation({
+    summary: 'Transcribe a pending audio attachment via OpenAI Whisper',
+  })
+  async transcribe(@Req() req: any, @Param('id') id: string) {
+    return this.attachments.transcribe(id, req.userId);
+  }
+
   @Get(':id/url')
   @ApiOperation({
     summary: 'Get a short-lived presigned GET URL (membership-gated)',

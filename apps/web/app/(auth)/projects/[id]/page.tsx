@@ -7,7 +7,7 @@ import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronR
 import { useAuth } from '../../../../lib/auth-context';
 import { projects as projectsApi, uploads as uploadsApi, documents as documentsApi, aiParticipant as aiApi, ApiProject, ApiDocument, ProjectGrant, ApiProjectNote, ApiProjectMessage } from '../../../../lib/api';
 import { useTranslator, TranslatorToolbar, MessageTranslation } from '../../../../lib/translator';
-import { useAttachments, AttachmentPickerButton, PendingAttachments, AttachmentDropZone, MessageAttachments } from '../../../../lib/attachments';
+import { useAttachments, AttachmentPickerButton, PendingAttachments, AttachmentDropZone, MessageAttachments, MicRecorderControl } from '../../../../lib/attachments';
 
 type TabType = 'overview' | 'documents' | 'scope' | 'chat' | 'team';
 
@@ -1207,6 +1207,13 @@ function ProjectChat({
           <AttachmentPickerButton
             onPick={(files) => attachments.addFiles(files)}
             disabled={sending}
+          />
+          <MicRecorderControl
+            attachments={attachments}
+            disabled={sending}
+            onTranscribed={(text) =>
+              setBody((b) => (b ? `${b} ${text}` : text))
+            }
           />
           <textarea
             value={body}

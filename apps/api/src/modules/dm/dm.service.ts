@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
+import { AttachmentsService } from '../attachments/attachments.service';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -31,7 +32,15 @@ export class DmService {
   private threadSubscribers = new Map<string, Set<Subscriber<DmThreadEvent>>>();
   private inboxSubscribers = new Map<string, Set<Subscriber<DmInboxEvent>>>();
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private attachments: AttachmentsService,
+  ) {}
+
+  // Shape attachments for the wire (no raw object URLs).
+  private mapAttachments(list: any[] | undefined) {
+    return (list ?? []).map((a) => this.attachments.toPublic(a));
+  }
 
   private validateUuid(id: string) {
     if (!UUID_REGEX.test(id)) {
@@ -254,23 +263,54 @@ export class DmService {
       }
     }
 
-    return this.prisma.directMessage.findMany({
+    const messages = await this.prisma.directMessage.findMany({
       where: {
         threadId,
         ...(createdAfter ? { createdAt: { gt: createdAfter } } : {}),
       },
       orderBy: { createdAt: 'asc' },
-      include: { sender: { select: { id: true, name: true, email: true } } },
+      include: {
+        sender: { select: { id: true, name: true, email: true } },
+        attachments: { orderBy: { createdAt: 'asc' } },
+      },
     });
+    return messages.map((m) => ({
+      ...m,
+      attachments: this.mapAttachments(m.attachments),
+    }));
   }
 
-  async addMessage(threadId: string, userId: string, body: string) {
+  async addMessage(
+    threadId: string,
+    userId: string,
+    body: string,
+    attachmentIds?: string[],
+  ) {
     const thread = await this.getThreadForUserOrThrow(threadId, userId);
 
+    const text = (body ?? '').trim();
+    const hasAttachments = !!attachmentIds && attachmentIds.length > 0;
+    if (!text && !hasAttachments) {
+      throw new BadRequestException(
+        'A message must have text or at least one attachment.',
+      );
+    }
+
     const message = await this.prisma.directMessage.create({
-      data: { threadId, senderId: userId, body },
+      data: { threadId, senderId: userId, body: text },
       include: { sender: { select: { id: true, name: true, email: true } } },
     });
+
+    let linked: any[] = [];
+    if (hasAttachments) {
+      linked = await this.attachments.linkToMessage(attachmentIds!, userId, {
+        directMessageId: message.id,
+      });
+    }
+    const withAttachments = {
+      ...message,
+      attachments: this.mapAttachments(linked),
+    };
 
     // Bump the thread's last-message marker and treat the sender as caught up.
     const isA = thread.userAId === userId;
@@ -288,7 +328,7 @@ export class DmService {
     // inboxes get a ping so their conversation lists re-sort / re-badge.
     this.publish(this.threadSubscribers, threadId, {
       type: 'created',
-      message,
+      message: withAttachments,
     });
     this.publish(this.inboxSubscribers, thread.userAId, {
       type: 'inbox',
@@ -299,7 +339,7 @@ export class DmService {
       threadId,
     });
 
-    return message;
+    return withAttachments;
   }
 
   private async getOwnMessageOrThrow(
@@ -332,12 +372,19 @@ export class DmService {
     const message = await this.prisma.directMessage.update({
       where: { id: messageId },
       data: { body },
-      include: { sender: { select: { id: true, name: true, email: true } } },
+      include: {
+        sender: { select: { id: true, name: true, email: true } },
+        attachments: { orderBy: { createdAt: 'asc' } },
+      },
     });
+    const withAttachments = {
+      ...message,
+      attachments: this.mapAttachments(message.attachments),
+    };
 
     this.publish(this.threadSubscribers, threadId, {
       type: 'updated',
-      message,
+      message: withAttachments,
     });
     this.publish(this.inboxSubscribers, thread.userAId, {
       type: 'inbox',
@@ -348,7 +395,7 @@ export class DmService {
       threadId,
     });
 
-    return message;
+    return withAttachments;
   }
 
   async deleteMessage(threadId: string, messageId: string, userId: string) {

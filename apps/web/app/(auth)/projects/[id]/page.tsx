@@ -7,6 +7,7 @@ import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronR
 import { useAuth } from '../../../../lib/auth-context';
 import { projects as projectsApi, uploads as uploadsApi, documents as documentsApi, aiParticipant as aiApi, ApiProject, ApiDocument, ProjectGrant, ApiProjectNote, ApiProjectMessage } from '../../../../lib/api';
 import { useTranslator, TranslatorToolbar, MessageTranslation } from '../../../../lib/translator';
+import { useAttachments, AttachmentPickerButton, PendingAttachments, AttachmentDropZone, MessageAttachments } from '../../../../lib/attachments';
 
 type TabType = 'overview' | 'documents' | 'scope' | 'chat' | 'team';
 
@@ -815,6 +816,7 @@ function ProjectChat({
   const messagesRef = useRef<ApiProjectMessage[]>([]);
   messagesRef.current = messages;
   const translator = useTranslator(`project:${projectId}`);
+  const attachments = useAttachments();
 
   const scrollToBottom = (smooth = true) => {
     const el = scrollRef.current;
@@ -933,12 +935,19 @@ function ProjectChat({
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = body.trim();
-    if (!trimmed || sending) return;
+    const attachmentIds = attachments.collectReadyIds();
+    if ((!trimmed && attachmentIds.length === 0) || sending) return;
+    if (attachments.uploading) return;
     setSending(true);
     setError(null);
     const mentionsAi = /@(assistant|ai)\b/i.test(trimmed);
     try {
-      const created = await projectsApi.addMessage(projectId, trimmed);
+      const created = await projectsApi.addMessage(
+        projectId,
+        trimmed,
+        attachmentIds.length ? attachmentIds : undefined,
+      );
+      attachments.reset();
       setMessages((prev) =>
         prev.some((m) => m.id === created.id) ? prev : [...prev, created],
       );
@@ -1111,18 +1120,22 @@ function ProjectChat({
                       </div>
                     </div>
                   ) : (
-                    <div
-                      className={`rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap break-words ${
-                        isAi
-                          ? 'bg-amber-50 text-gray-800 border border-amber-100 rounded-tl-sm'
-                          : isOwn
-                            ? 'bg-amber-500 text-white rounded-tr-sm'
-                            : 'bg-gray-100 text-gray-800 rounded-tl-sm'
-                      }`}
-                    >
-                      {m.body}
-                    </div>
+                    m.body && (
+                      <div
+                        className={`rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap break-words ${
+                          isAi
+                            ? 'bg-amber-50 text-gray-800 border border-amber-100 rounded-tl-sm'
+                            : isOwn
+                              ? 'bg-amber-500 text-white rounded-tr-sm'
+                              : 'bg-gray-100 text-gray-800 rounded-tl-sm'
+                        }`}
+                      >
+                        {m.body}
+                      </div>
+                    )
                   )}
+
+                  {!isEditing && <MessageAttachments attachments={m.attachments} />}
 
                   {!isOwn && !isEditing && m.body && (
                     <MessageTranslation
@@ -1185,36 +1198,47 @@ function ProjectChat({
       </div>
 
       {/* Composer */}
-      <form
-        onSubmit={send}
-        className="border-t border-gray-100 px-6 py-4 flex items-end gap-3"
+      <AttachmentDropZone
+        attachments={attachments}
+        className="border-t border-gray-100 px-6 py-4"
       >
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="Type a message…  Mention @assistant for AI"
-          rows={1}
-          className="flex-1 bg-white border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 resize-none max-h-32"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              send(e);
+        <PendingAttachments attachments={attachments} />
+        <form onSubmit={send} className="flex items-end gap-3">
+          <AttachmentPickerButton
+            onPick={(files) => attachments.addFiles(files)}
+            disabled={sending}
+          />
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="Type a message…  Mention @assistant for AI"
+            rows={1}
+            className="flex-1 bg-white border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 resize-none max-h-32 min-w-0"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send(e);
+              }
+            }}
+          />
+          <button
+            type="submit"
+            disabled={
+              (!body.trim() && !attachments.hasPending) ||
+              sending ||
+              attachments.uploading
             }
-          }}
-        />
-        <button
-          type="submit"
-          disabled={!body.trim() || sending}
-          className="flex-shrink-0 inline-flex items-center justify-center bg-amber-500 text-white w-11 h-11 rounded-lg hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          title="Send (Enter)"
-        >
-          {sending ? (
-            <Loader2 className="animate-spin" size={18} />
-          ) : (
-            <Send size={18} />
-          )}
-        </button>
-      </form>
+            className="flex-shrink-0 inline-flex items-center justify-center bg-amber-500 text-white w-11 h-11 rounded-lg hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Send (Enter)"
+          >
+            {sending ? (
+              <Loader2 className="animate-spin" size={18} />
+            ) : (
+              <Send size={18} />
+            )}
+          </button>
+        </form>
+      </AttachmentDropZone>
 
       {error && (
         <p className="px-6 pb-3 text-sm text-red-600 flex items-center gap-1.5">

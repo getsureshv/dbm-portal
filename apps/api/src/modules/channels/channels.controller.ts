@@ -19,6 +19,7 @@ import { ChannelsService } from './channels.service';
 import {
   CreateChannelDto,
   ChannelMessageDto,
+  ChannelEditMessageDto,
   AddMembersDto,
 } from './dto/channel.dto';
 
@@ -114,7 +115,12 @@ export class ChannelsController {
     @Param('id') id: string,
     @Body() dto: ChannelMessageDto,
   ) {
-    return this.channels.addMessage(id, req.userId, dto.body);
+    return this.channels.addMessage(
+      id,
+      req.userId,
+      dto.body ?? '',
+      dto.attachmentIds,
+    );
   }
 
   @Patch(':id/messages/:messageId')
@@ -123,7 +129,7 @@ export class ChannelsController {
     @Req() req: any,
     @Param('id') id: string,
     @Param('messageId') messageId: string,
-    @Body() dto: ChannelMessageDto,
+    @Body() dto: ChannelEditMessageDto,
   ) {
     return this.channels.updateMessage(id, messageId, req.userId, dto.body);
   }

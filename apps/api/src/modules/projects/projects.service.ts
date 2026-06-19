@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { PermissionsService } from '../access/permissions.service';
+import { AttachmentsService } from '../attachments/attachments.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import {
@@ -39,7 +40,16 @@ export class ProjectsService {
   constructor(
     private prisma: PrismaService,
     private permissions: PermissionsService,
+    // Optional in unit tests (constructed with 2 args); only the chat/message
+    // methods use it, and those are not exercised by the access-control specs.
+    private attachments?: AttachmentsService,
   ) {}
+
+  private mapAttachments(list: any[] | undefined) {
+    return (list ?? []).map((a) =>
+      this.attachments ? this.attachments.toPublic(a) : a,
+    );
+  }
 
   // Subscribe to realtime chat events for a project. Returns an unsubscribe fn
   // the caller MUST invoke on disconnect to avoid leaking subscribers.
@@ -482,7 +492,7 @@ export class ProjectsService {
       }
     }
 
-    return this.prisma.projectMessage.findMany({
+    const messages = await this.prisma.projectMessage.findMany({
       where: {
         projectId,
         ...(createdAfter ? { createdAt: { gt: createdAfter } } : {}),
@@ -490,24 +500,56 @@ export class ProjectsService {
       orderBy: { createdAt: 'asc' },
       include: {
         author: { select: { id: true, name: true, email: true } },
+        attachments: { orderBy: { createdAt: 'asc' } },
       },
     });
+    return messages.map((m) => ({
+      ...m,
+      attachments: this.mapAttachments(m.attachments),
+    }));
   }
 
   // Post a message. Author is the authenticated caller; requires update access
   // to the project (i.e. a project member, not a read-only viewer).
-  async addMessage(projectId: string, userId: string, body: string) {
+  async addMessage(
+    projectId: string,
+    userId: string,
+    body: string,
+    attachmentIds?: string[],
+  ) {
     await this.getProject(projectId, userId, 'update');
 
+    const text = (body ?? '').trim();
+    const hasAttachments = !!attachmentIds && attachmentIds.length > 0;
+    if (!text && !hasAttachments) {
+      throw new BadRequestException(
+        'A message must have text or at least one attachment.',
+      );
+    }
+
     const message = await this.prisma.projectMessage.create({
-      data: { projectId, authorId: userId, body },
+      data: { projectId, authorId: userId, body: text },
       include: {
         author: { select: { id: true, name: true, email: true } },
       },
     });
 
-    this.publishChatEvent(projectId, { type: 'created', message });
-    return message;
+    let linked: any[] = [];
+    if (hasAttachments && this.attachments) {
+      linked = await this.attachments.linkToMessage(attachmentIds!, userId, {
+        projectMessageId: message.id,
+      });
+    }
+    const withAttachments = {
+      ...message,
+      attachments: this.mapAttachments(linked),
+    };
+
+    this.publishChatEvent(projectId, {
+      type: 'created',
+      message: withAttachments,
+    });
+    return withAttachments;
   }
 
   // Post an AI-participant reply into a project chat thread. No human author
@@ -521,8 +563,12 @@ export class ProjectsService {
         author: { select: { id: true, name: true, email: true } },
       },
     });
-    this.publishChatEvent(projectId, { type: 'created', message });
-    return message;
+    const withAttachments = { ...message, attachments: [] as any[] };
+    this.publishChatEvent(projectId, {
+      type: 'created',
+      message: withAttachments,
+    });
+    return withAttachments;
   }
 
   // Load a message and confirm it belongs to the project and the caller authored
@@ -562,11 +608,19 @@ export class ProjectsService {
       data: { body },
       include: {
         author: { select: { id: true, name: true, email: true } },
+        attachments: { orderBy: { createdAt: 'asc' } },
       },
     });
+    const withAttachments = {
+      ...message,
+      attachments: this.mapAttachments(message.attachments),
+    };
 
-    this.publishChatEvent(projectId, { type: 'updated', message });
-    return message;
+    this.publishChatEvent(projectId, {
+      type: 'updated',
+      message: withAttachments,
+    });
+    return withAttachments;
   }
 
   // Delete a message. Author-only.

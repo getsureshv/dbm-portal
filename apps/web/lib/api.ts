@@ -131,6 +131,20 @@ export interface ApiProjectMessage {
   createdAt: string;
   updatedAt: string;
   author: { id: string; name: string | null; email: string } | null;
+  attachments?: ApiAttachment[];
+}
+
+// A file/image attached to a chat message. The server never returns a raw URL;
+// fetch a short-lived signed URL on demand via attachments.getUrl(id).
+export interface ApiAttachment {
+  id: string;
+  kind: 'image' | 'video' | 'audio' | 'file';
+  mime: string;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+  durationMs: number | null;
+  createdAt: string;
 }
 
 // A note/comment on a project, captured with its author and timestamp.
@@ -269,10 +283,10 @@ export const projects = {
       `/projects/${projectId}/messages${after ? `?after=${after}` : ''}`,
     ),
 
-  addMessage: (projectId: string, body: string) =>
+  addMessage: (projectId: string, body: string, attachmentIds?: string[]) =>
     request<ApiProjectMessage>(`/projects/${projectId}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ body, attachmentIds }),
     }),
 
   updateMessage: (projectId: string, messageId: string, body: string) =>
@@ -939,6 +953,7 @@ export interface ApiDmMessage {
   createdAt: string;
   updatedAt: string;
   sender: { id: string; name: string | null; email: string };
+  attachments?: ApiAttachment[];
 }
 
 export interface ApiDmThread {
@@ -976,10 +991,10 @@ export const dm = {
     return request<ApiDmMessage[]>(`/dm/threads/${threadId}/messages${qs}`);
   },
 
-  addMessage: (threadId: string, body: string) =>
+  addMessage: (threadId: string, body: string, attachmentIds?: string[]) =>
     request<ApiDmMessage>(`/dm/threads/${threadId}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ body, attachmentIds }),
     }),
 
   updateMessage: (threadId: string, messageId: string, body: string) =>
@@ -1167,6 +1182,7 @@ export interface ApiChannelMessage {
   createdAt: string;
   updatedAt: string;
   author: { id: string; name: string | null; email: string } | null;
+  attachments?: ApiAttachment[];
 }
 
 export interface ApiChannel {
@@ -1211,10 +1227,10 @@ export const channels = {
     return request<ApiChannelMessage[]>(`/channels/${id}/messages${qs}`);
   },
 
-  addMessage: (id: string, body: string) =>
+  addMessage: (id: string, body: string, attachmentIds?: string[]) =>
     request<ApiChannelMessage>(`/channels/${id}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ body, attachmentIds }),
     }),
 
   updateMessage: (id: string, messageId: string, body: string) =>
@@ -1300,3 +1316,38 @@ export const translate = (
     method: 'POST',
     body: JSON.stringify({ text, targetLang, sourceLang }),
   });
+
+// ---- Attachments (shared image/file foundation across all chat surfaces) ----
+// Flow: presignUpload → PUT the bytes straight to R2 → send the message with the
+// returned attachmentId(s). Download URLs are short-lived and fetched on demand
+// (server enforces conversation membership), so we never store raw object URLs.
+
+export interface PresignUploadResult {
+  attachmentId: string;
+  uploadUrl: string;
+  s3Key: string;
+  expiresInSeconds: number;
+}
+
+export const attachments = {
+  presignUpload: (data: {
+    kind: 'image' | 'video' | 'audio' | 'file';
+    mime: string;
+    sizeBytes: number;
+    fileName: string;
+    width?: number;
+    height?: number;
+  }) =>
+    request<PresignUploadResult>('/attachments/presign-upload', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  confirm: (id: string) =>
+    request<ApiAttachment>(`/attachments/${id}/confirm`, { method: 'POST' }),
+
+  getUrl: (id: string) =>
+    request<{ url: string; expiresInSeconds: number }>(
+      `/attachments/${id}/url`,
+    ),
+};

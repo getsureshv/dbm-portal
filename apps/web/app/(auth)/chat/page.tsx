@@ -49,6 +49,13 @@ import {
   TranslatorToolbar,
   MessageTranslation,
 } from '../../../lib/translator';
+import {
+  useAttachments,
+  AttachmentPickerButton,
+  PendingAttachments,
+  AttachmentDropZone,
+  MessageAttachments,
+} from '../../../lib/attachments';
 
 // ---- small shared helpers --------------------------------------------------
 
@@ -1263,6 +1270,7 @@ function ChannelView({
   const [aiThinking, setAiThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const translator = useTranslator(`channel:${channelId}`);
+  const attachments = useAttachments();
 
   messagesRef.current = messages;
 
@@ -1374,12 +1382,21 @@ function ChannelView({
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
     const body = draft.trim();
-    if (!body || sending) return;
+    const attachmentIds = attachments.collectReadyIds();
+    // Allow an image-only message (no text), but never an empty send. Also
+    // wait for any in-flight uploads to finish before sending.
+    if ((!body && attachmentIds.length === 0) || sending) return;
+    if (attachments.uploading) return;
     setSending(true);
     setDraft('');
     const mentionsAi = /@(assistant|ai)\b/i.test(body);
     try {
-      const created = await channelsApi.addMessage(channelId, body);
+      const created = await channelsApi.addMessage(
+        channelId,
+        body,
+        attachmentIds.length ? attachmentIds : undefined,
+      );
+      attachments.reset();
       setMessages((prev) =>
         prev.some((m) => m.id === created.id) ? prev : [...prev, created],
       );
@@ -1473,17 +1490,20 @@ function ChannelView({
                       {m.isAi ? 'AI Assistant' : userLabel(m.author)}
                     </span>
                   )}
-                  <div
-                    className={`rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words ${
-                      m.isAi
-                        ? 'bg-amber-50 text-gray-900 border border-amber-100 rounded-bl-sm'
-                        : own
-                          ? 'bg-amber-500 text-white rounded-br-sm'
-                          : 'bg-gray-100 text-gray-900 rounded-bl-sm'
-                    }`}
-                  >
-                    {m.body}
-                  </div>
+                  {m.body && (
+                    <div
+                      className={`rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words ${
+                        m.isAi
+                          ? 'bg-amber-50 text-gray-900 border border-amber-100 rounded-bl-sm'
+                          : own
+                            ? 'bg-amber-500 text-white rounded-br-sm'
+                            : 'bg-gray-100 text-gray-900 rounded-bl-sm'
+                      }`}
+                    >
+                      {m.body}
+                    </div>
+                  )}
+                  <MessageAttachments attachments={m.attachments} />
                   {!own && m.body && (
                     <MessageTranslation
                       text={m.body}
@@ -1508,36 +1528,47 @@ function ChannelView({
         )}
       </div>
 
-      <form
-        onSubmit={send}
-        className="p-3 border-t border-gray-100 flex items-end gap-2"
+      <AttachmentDropZone
+        attachments={attachments}
+        className="p-3 border-t border-gray-100"
       >
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              send(e);
+        <PendingAttachments attachments={attachments} />
+        <form onSubmit={send} className="flex items-end gap-2">
+          <AttachmentPickerButton
+            onPick={(files) => attachments.addFiles(files)}
+            disabled={sending}
+          />
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send(e);
+              }
+            }}
+            rows={1}
+            placeholder={`Message #${channel.name}  \u2014  @assistant for AI`}
+            className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 max-h-32 min-w-0"
+          />
+          <button
+            type="submit"
+            disabled={
+              (!draft.trim() && !attachments.hasPending) ||
+              sending ||
+              attachments.uploading
             }
-          }}
-          rows={1}
-          placeholder={`Message #${channel.name}  \u2014  @assistant for AI`}
-          className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 max-h-32"
-        />
-        <button
-          type="submit"
-          disabled={!draft.trim() || sending}
-          className="bg-amber-500 text-white rounded-xl p-2.5 hover:bg-amber-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          aria-label="Send"
-        >
-          {sending ? (
-            <Loader2 className="animate-spin" size={18} />
-          ) : (
-            <Send size={18} />
-          )}
-        </button>
-      </form>
+            className="bg-amber-500 text-white rounded-xl p-2.5 hover:bg-amber-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+            aria-label="Send"
+          >
+            {sending ? (
+              <Loader2 className="animate-spin" size={18} />
+            ) : (
+              <Send size={18} />
+            )}
+          </button>
+        </form>
+      </AttachmentDropZone>
     </div>
   );
 }
@@ -1869,6 +1900,7 @@ function ThreadView({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const translator = useTranslator(`dm:${threadId}`);
+  const attachments = useAttachments();
 
   messagesRef.current = messages;
 
@@ -1989,11 +2021,18 @@ function ThreadView({
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
     const body = draft.trim();
-    if (!body || sending) return;
+    const attachmentIds = attachments.collectReadyIds();
+    if ((!body && attachmentIds.length === 0) || sending) return;
+    if (attachments.uploading) return;
     setSending(true);
     setDraft('');
     try {
-      const created = await dmApi.addMessage(threadId, body);
+      const created = await dmApi.addMessage(
+        threadId,
+        body,
+        attachmentIds.length ? attachmentIds : undefined,
+      );
+      attachments.reset();
       setMessages((prev) =>
         prev.some((m) => m.id === created.id) ? prev : [...prev, created],
       );
@@ -2124,16 +2163,19 @@ function ThreadView({
                       </div>
                     </div>
                   ) : (
-                    <div
-                      className={`rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words ${
-                        own
-                          ? 'bg-amber-500 text-white rounded-br-sm'
-                          : 'bg-gray-100 text-gray-900 rounded-bl-sm'
-                      }`}
-                    >
-                      {m.body}
-                    </div>
+                    m.body && (
+                      <div
+                        className={`rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words ${
+                          own
+                            ? 'bg-amber-500 text-white rounded-br-sm'
+                            : 'bg-gray-100 text-gray-900 rounded-bl-sm'
+                        }`}
+                      >
+                        {m.body}
+                      </div>
+                    )
                   )}
+                  {!isEditing && <MessageAttachments attachments={m.attachments} />}
                   {!own && !isEditing && m.body && (
                     <MessageTranslation
                       text={m.body}
@@ -2199,36 +2241,47 @@ function ThreadView({
       </div>
 
       {/* Composer */}
-      <form
-        onSubmit={send}
-        className="p-3 border-t border-gray-100 flex items-end gap-2"
+      <AttachmentDropZone
+        attachments={attachments}
+        className="p-3 border-t border-gray-100"
       >
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              send(e);
+        <PendingAttachments attachments={attachments} />
+        <form onSubmit={send} className="flex items-end gap-2">
+          <AttachmentPickerButton
+            onPick={(files) => attachments.addFiles(files)}
+            disabled={sending}
+          />
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send(e);
+              }
+            }}
+            rows={1}
+            placeholder={`Message ${userLabel(thread.otherUser)}...`}
+            className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 max-h-32 min-w-0"
+          />
+          <button
+            type="submit"
+            disabled={
+              (!draft.trim() && !attachments.hasPending) ||
+              sending ||
+              attachments.uploading
             }
-          }}
-          rows={1}
-          placeholder={`Message ${userLabel(thread.otherUser)}...`}
-          className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 max-h-32"
-        />
-        <button
-          type="submit"
-          disabled={!draft.trim() || sending}
-          className="bg-amber-500 text-white rounded-xl p-2.5 hover:bg-amber-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          aria-label="Send"
-        >
-          {sending ? (
-            <Loader2 className="animate-spin" size={18} />
-          ) : (
-            <Send size={18} />
-          )}
-        </button>
-      </form>
+            className="bg-amber-500 text-white rounded-xl p-2.5 hover:bg-amber-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+            aria-label="Send"
+          >
+            {sending ? (
+              <Loader2 className="animate-spin" size={18} />
+            ) : (
+              <Send size={18} />
+            )}
+          </button>
+        </form>
+      </AttachmentDropZone>
     </div>
   );
 }

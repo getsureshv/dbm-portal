@@ -26,7 +26,7 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { GrantProjectAccessDto } from './dto/grant-project-access.dto';
 import { CreateNoteDto } from './dto/create-note.dto';
-import { CreateMessageDto } from './dto/create-message.dto';
+import { CreateMessageDto, EditMessageDto } from './dto/create-message.dto';
 
 @ApiTags('Projects')
 @Controller('projects')
@@ -233,7 +233,12 @@ export class ProjectsController {
     @Body() dto: CreateMessageDto,
   ) {
     const userId = req.userId;
-    return this.projectsService.addMessage(id, userId, dto.body);
+    return this.projectsService.addMessage(
+      id,
+      userId,
+      dto.body ?? '',
+      dto.attachmentIds,
+    );
   }
 
   @Patch(':id/messages/:messageId')
@@ -243,7 +248,7 @@ export class ProjectsController {
     @Req() req: any,
     @Param('id') id: string,
     @Param('messageId') messageId: string,
-    @Body() dto: CreateMessageDto,
+    @Body() dto: EditMessageDto,
   ) {
     const userId = req.userId;
     return this.projectsService.updateMessage(id, messageId, userId, dto.body);

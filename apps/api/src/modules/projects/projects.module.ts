@@ -4,9 +4,10 @@ import { ProjectsService } from './projects.service';
 import { ScopePdfService } from './scope-pdf.service';
 import { AuthModule } from '../auth/auth.module';
 import { UploadsModule } from '../uploads/uploads.module';
+import { AttachmentsModule } from '../attachments/attachments.module';
 
 @Module({
-  imports: [AuthModule, UploadsModule],
+  imports: [AuthModule, UploadsModule, AttachmentsModule],
   controllers: [ProjectsController],
   providers: [ProjectsService, ScopePdfService],
   exports: [ProjectsService],

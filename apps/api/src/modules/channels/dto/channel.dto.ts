@@ -7,6 +7,7 @@ import {
   IsUUID,
   IsArray,
   ArrayNotEmpty,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -33,8 +34,24 @@ export class CreateChannelDto {
   memberIds?: string[];
 }
 
-// DTO for sending a message to a channel.
+// DTO for sending a message to a channel. Body is optional when attachments are
+// present (image-only messages allowed); the service rejects empty messages.
 export class ChannelMessageDto {
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @MaxLength(5000)
+  body?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsUUID('all', { each: true })
+  attachmentIds?: string[];
+}
+
+// DTO for editing a channel message — body remains required.
+export class ChannelEditMessageDto {
   @IsString()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsNotEmpty()

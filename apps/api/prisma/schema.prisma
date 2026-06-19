@@ -74,6 +74,15 @@ enum TradeGroup {
   SERVICES
 }
 
+// Shared attachment foundation. Only `image` is wired in increment 1; the other
+// kinds exist so video/audio/file plug in later with no schema change.
+enum AttachmentKind {
+  image
+  video
+  audio
+  file
+}
+
 // Phase 5 stub enums
 enum InvoiceStatus {
   DRAFT
@@ -151,6 +160,7 @@ model User {
   tasksAssigned       Task[]             @relation("TaskAssignee")
   tasksCreated        Task[]             @relation("TaskCreatedBy")
   taskAssignments     TaskAssignment[]   @relation("TaskAssignmentUser")
+  uploadedAttachments Attachment[]       @relation("AttachmentUploader")
 
   @@map("users")
 }
@@ -399,8 +409,9 @@ model ProjectMessage {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  author    User?    @relation(fields: [authorId], references: [id])
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author      User?        @relation(fields: [authorId], references: [id])
+  attachments Attachment[]
 
   @@index([projectId])
   @@index([authorId])
@@ -439,8 +450,9 @@ model DirectMessage {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  thread DirectThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  sender User         @relation(fields: [senderId], references: [id])
+  thread      DirectThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender      User         @relation(fields: [senderId], references: [id])
+  attachments Attachment[]
 
   @@index([threadId])
   @@index([senderId])
@@ -492,8 +504,9 @@ model ChannelMessage {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  author  User?   @relation(fields: [authorId], references: [id])
+  channel     Channel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author      User?        @relation(fields: [authorId], references: [id])
+  attachments Attachment[]
 
   @@index([channelId])
   @@index([authorId])
@@ -1048,4 +1061,43 @@ model TranslationCache {
 
   @@unique([textHash, targetLang])
   @@map("translation_cache")
+}
+
+// ─── ATTACHMENTS (shared foundation) ───────────────────────
+// One row per uploaded file. Created in a "pending" state (no message link) at
+// presign time, then linked to exactly one message when that message is sent.
+// This repo has three separate message tables (direct / channel / project), so
+// instead of a single polymorphic messageId we carry three nullable FK columns;
+// at most one is set. Access to the object is ALWAYS gated server-side by
+// membership of the conversation the linked message belongs to (private bucket,
+// short-lived presigned URLs only — never a public object URL).
+model Attachment {
+  id        String         @id @default(uuid()) @db.Uuid
+  uploaderId String        @map("uploader_id") @db.Uuid
+  kind      AttachmentKind
+  s3Key     String         @map("s3_key")
+  mime      String
+  sizeBytes Int            @map("size_bytes")
+  width     Int?
+  height    Int?
+  durationMs Int?          @map("duration_ms")
+
+  // At most one of these is set; null on all three means "pending" (uploaded but
+  // not yet attached to a sent message — only the uploader may fetch it).
+  directMessageId  String? @map("direct_message_id") @db.Uuid
+  channelMessageId String? @map("channel_message_id") @db.Uuid
+  projectMessageId String? @map("project_message_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  uploader       User            @relation("AttachmentUploader", fields: [uploaderId], references: [id])
+  directMessage  DirectMessage?  @relation(fields: [directMessageId], references: [id], onDelete: Cascade)
+  channelMessage ChannelMessage? @relation(fields: [channelMessageId], references: [id], onDelete: Cascade)
+  projectMessage ProjectMessage? @relation(fields: [projectMessageId], references: [id], onDelete: Cascade)
+
+  @@index([uploaderId])
+  @@index([directMessageId])
+  @@index([channelMessageId])
+  @@index([projectMessageId])
+  @@map("attachments")
 }

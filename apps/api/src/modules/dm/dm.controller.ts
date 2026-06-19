@@ -16,7 +16,11 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
 import { AuthGuard } from '../auth/auth.guard';
 import { DmService } from './dm.service';
-import { DmMessageDto, StartThreadDto } from './dto/dm-message.dto';
+import {
+  DmMessageDto,
+  DmEditMessageDto,
+  StartThreadDto,
+} from './dto/dm-message.dto';
 
 @ApiTags('direct-messages')
 @ApiBearerAuth()
@@ -103,7 +107,12 @@ export class DmController {
     @Param('threadId') threadId: string,
     @Body() dto: DmMessageDto,
   ) {
-    return this.dm.addMessage(threadId, req.userId, dto.body);
+    return this.dm.addMessage(
+      threadId,
+      req.userId,
+      dto.body ?? '',
+      dto.attachmentIds,
+    );
   }
 
   @Patch('threads/:threadId/messages/:messageId')
@@ -112,7 +121,7 @@ export class DmController {
     @Req() req: any,
     @Param('threadId') threadId: string,
     @Param('messageId') messageId: string,
-    @Body() dto: DmMessageDto,
+    @Body() dto: DmEditMessageDto,
   ) {
     return this.dm.updateMessage(threadId, messageId, req.userId, dto.body);
   }

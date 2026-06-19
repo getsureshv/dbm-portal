@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
+import { AttachmentsService } from '../attachments/attachments.service';
 import { CreateChannelDto } from './dto/channel.dto';
 
 const UUID_REGEX =
@@ -38,7 +39,14 @@ export class ChannelsService {
     Set<Subscriber<ChannelInboxEvent>>
   >();
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private attachments: AttachmentsService,
+  ) {}
+
+  private mapAttachments(list: any[] | undefined) {
+    return (list ?? []).map((a) => this.attachments.toPublic(a));
+  }
 
   private validateUuid(id: string) {
     if (!UUID_REGEX.test(id)) {
@@ -385,24 +393,55 @@ export class ChannelsService {
       }
     }
 
-    return this.prisma.channelMessage.findMany({
+    const messages = await this.prisma.channelMessage.findMany({
       where: {
         channelId,
         ...(createdAfter ? { createdAt: { gt: createdAfter } } : {}),
       },
       orderBy: { createdAt: 'asc' },
-      include: { author: USER_SELECT },
+      include: {
+        author: USER_SELECT,
+        attachments: { orderBy: { createdAt: 'asc' } },
+      },
     });
+    return messages.map((m) => ({
+      ...m,
+      attachments: this.mapAttachments(m.attachments),
+    }));
   }
 
-  async addMessage(channelId: string, userId: string, body: string) {
+  async addMessage(
+    channelId: string,
+    userId: string,
+    body: string,
+    attachmentIds?: string[],
+  ) {
     this.validateUuid(channelId);
     await this.requireMembership(channelId, userId);
 
+    const text = (body ?? '').trim();
+    const hasAttachments = !!attachmentIds && attachmentIds.length > 0;
+    if (!text && !hasAttachments) {
+      throw new BadRequestException(
+        'A message must have text or at least one attachment.',
+      );
+    }
+
     const message = await this.prisma.channelMessage.create({
-      data: { channelId, authorId: userId, body, isAi: false },
+      data: { channelId, authorId: userId, body: text, isAi: false },
       include: { author: USER_SELECT },
     });
+
+    let linked: any[] = [];
+    if (hasAttachments) {
+      linked = await this.attachments.linkToMessage(attachmentIds!, userId, {
+        channelMessageId: message.id,
+      });
+    }
+    const withAttachments = {
+      ...message,
+      attachments: this.mapAttachments(linked),
+    };
 
     // Bump sender's lastReadAt so they don't see their own message as unread.
     await this.prisma.channelMember.update({
@@ -412,11 +451,11 @@ export class ChannelsService {
 
     this.publish(this.channelSubscribers, channelId, {
       type: 'created',
-      message,
+      message: withAttachments,
     });
     await this.publishInboxToAllMembers(channelId);
 
-    return message;
+    return withAttachments;
   }
 
   /** Used by the AI module to post an AI-generated message to a channel. */
@@ -427,14 +466,15 @@ export class ChannelsService {
       data: { channelId, authorId: null, body, isAi: true },
       include: { author: USER_SELECT },
     });
+    const withAttachments = { ...message, attachments: [] as any[] };
 
     this.publish(this.channelSubscribers, channelId, {
       type: 'created',
-      message,
+      message: withAttachments,
     });
     await this.publishInboxToAllMembers(channelId);
 
-    return message;
+    return withAttachments;
   }
 
   private async getOwnMessageOrThrow(
@@ -468,16 +508,23 @@ export class ChannelsService {
     const message = await this.prisma.channelMessage.update({
       where: { id: messageId },
       data: { body },
-      include: { author: USER_SELECT },
+      include: {
+        author: USER_SELECT,
+        attachments: { orderBy: { createdAt: 'asc' } },
+      },
     });
+    const withAttachments = {
+      ...message,
+      attachments: this.mapAttachments(message.attachments),
+    };
 
     this.publish(this.channelSubscribers, channelId, {
       type: 'updated',
-      message,
+      message: withAttachments,
     });
     await this.publishInboxToAllMembers(channelId);
 
-    return message;
+    return withAttachments;
   }
 
   async deleteMessage(

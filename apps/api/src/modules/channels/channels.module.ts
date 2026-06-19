@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common';
 import { ChannelsController } from './channels.controller';
 import { ChannelsService } from './channels.service';
 import { AuthModule } from '../auth/auth.module';
+import { AttachmentsModule } from '../attachments/attachments.module';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, AttachmentsModule],
   controllers: [ChannelsController],
   providers: [ChannelsService],
   exports: [ChannelsService],

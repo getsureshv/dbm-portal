@@ -650,31 +650,33 @@ export function PendingAttachments({
             </div>
           )}
 
-          {/* uploading overlay */}
+          {/* uploading overlay (pointer-events-none so the remove button stays clickable) */}
           {p.status === 'uploading' && (
-            <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white">
+            <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white pointer-events-none">
               <Loader2 size={16} className="animate-spin" />
               <span className="text-[10px] mt-0.5">{p.progress}%</span>
             </div>
           )}
 
-          {/* error overlay */}
+          {/* error overlay (pointer-events-none so the remove button stays clickable) */}
           {p.status === 'error' && (
             <div
-              className="absolute inset-0 bg-red-600/70 flex items-center justify-center text-white p-1 text-center"
+              className="absolute inset-0 bg-red-600/70 flex items-center justify-center text-white p-1 text-center pointer-events-none"
               title={p.error ?? 'Upload failed'}
             >
               <AlertCircle size={16} />
             </div>
           )}
 
+          {/* Always-visible remove button. z-10 keeps it above the overlays so an
+              attachment can be cancelled/removed even while uploading or errored. */}
           <button
             type="button"
             onClick={() => remove(p.localId)}
             aria-label="Remove attachment"
-            className="absolute top-0.5 right-0.5 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5"
+            className="absolute top-0.5 right-0.5 z-10 bg-black/60 hover:bg-black/80 text-white rounded-full p-1 leading-none"
           >
-            <X size={12} />
+            <X size={14} />
           </button>
         </div>
       ))}

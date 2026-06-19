@@ -93,7 +93,7 @@ export default function ChatPage() {
   const [tab, setTab] = useState<TopTab>('dms');
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto w-full min-w-0 p-4 sm:p-6 lg:p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
         <p className="text-gray-500 mt-1">
@@ -330,7 +330,7 @@ function CommandCenter({ currentUserId }: { currentUserId: string | null }) {
         <select
           value={projectFilter}
           onChange={(e) => setProjectFilter(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-700 bg-white focus:outline-none focus:border-amber-500"
+          className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-700 bg-white focus:outline-none focus:border-amber-500 max-w-full min-w-0"
         >
           <option value="">All projects</option>
           {projectOptions.map((p) => (
@@ -382,7 +382,7 @@ function CommandCenter({ currentUserId }: { currentUserId: string | null }) {
             return (
               <div
                 key={col.status}
-                className="bg-gray-50 border border-gray-200 rounded-2xl p-3 flex flex-col min-h-[200px]"
+                className="bg-gray-50 border border-gray-200 rounded-2xl p-3 flex flex-col min-h-[200px] min-w-0"
               >
                 <div className="flex items-center gap-2 px-1 pb-3">
                   <span className={`w-2 h-2 rounded-full ${col.accent}`} />
@@ -513,9 +513,9 @@ function CreateTaskForm({
                   type="checkbox"
                   checked={assigneeIds.includes(u.id)}
                   onChange={() => toggleAssignee(u.id)}
-                  className="rounded border-gray-300 text-amber-500 focus:ring-amber-200"
+                  className="rounded border-gray-300 text-amber-500 focus:ring-amber-200 flex-shrink-0"
                 />
-                <span className="text-sm text-gray-700">{userLabel(u)}</span>
+                <span className="text-sm text-gray-700 min-w-0 truncate">{userLabel(u)}</span>
               </label>
             ))
           )}
@@ -525,7 +525,7 @@ function CreateTaskForm({
         <select
           value={projectId}
           onChange={(e) => setProjectId(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-2.5 py-2 text-gray-700 bg-white focus:outline-none focus:border-amber-500"
+          className="text-sm border border-gray-200 rounded-lg px-2.5 py-2 text-gray-700 bg-white focus:outline-none focus:border-amber-500 min-w-0 max-w-full"
         >
           <option value="">No project</option>
           {projects.map((p) => (
@@ -538,7 +538,7 @@ function CreateTaskForm({
           type="date"
           value={dueAt}
           onChange={(e) => setDueAt(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-2.5 py-2 text-gray-700 bg-white focus:outline-none focus:border-amber-500"
+          className="text-sm border border-gray-200 rounded-lg px-2.5 py-2 text-gray-700 bg-white focus:outline-none focus:border-amber-500 min-w-0 max-w-full"
         />
       </div>
       <div className="flex justify-end gap-2">
@@ -607,7 +607,7 @@ function TaskCard({
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-3 group">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium text-gray-900 break-words flex-1">
+        <p className="text-sm font-medium text-gray-900 break-words flex-1 min-w-0">
           {task.title}
         </p>
         {isCreator &&
@@ -801,9 +801,9 @@ function TaskCard({
                     type="checkbox"
                     checked={checked}
                     onChange={() => toggleAssignee(u.id)}
-                    className="rounded border-gray-300 text-amber-500 focus:ring-amber-200"
+                    className="rounded border-gray-300 text-amber-500 focus:ring-amber-200 flex-shrink-0"
                   />
-                  <span className="text-xs text-gray-700">{userLabel(u)}</span>
+                  <span className="text-xs text-gray-700 min-w-0 truncate">{userLabel(u)}</span>
                 </label>
               );
             })
@@ -867,10 +867,10 @@ function Channels({ currentUserId }: { currentUserId: string | null }) {
   const active = myChannels.find((c) => c.id === activeId) ?? null;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-4 h-[640px]">
+    <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-4 h-[640px] min-w-0">
       {/* Left rail */}
       <div
-        className={`bg-white border border-gray-200 rounded-2xl flex flex-col overflow-hidden ${
+        className={`bg-white border border-gray-200 rounded-2xl flex flex-col overflow-hidden min-w-0 ${
           activeId && 'hidden md:flex'
         }`}
       >
@@ -961,7 +961,7 @@ function Channels({ currentUserId }: { currentUserId: string | null }) {
 
       {/* Right pane */}
       <div
-        className={`bg-white border border-gray-200 rounded-2xl flex flex-col overflow-hidden ${
+        className={`bg-white border border-gray-200 rounded-2xl flex flex-col overflow-hidden min-w-0 ${
           !activeId && view === 'list' && 'hidden md:flex'
         }`}
       >
@@ -1112,9 +1112,9 @@ function CreateChannelForm({
                     type="checkbox"
                     checked={memberIds.includes(u.id)}
                     onChange={() => toggleMember(u.id)}
-                    className="rounded border-gray-300 text-amber-500 focus:ring-amber-200"
+                    className="rounded border-gray-300 text-amber-500 focus:ring-amber-200 flex-shrink-0"
                   />
-                  <span className="text-sm text-gray-700">{userLabel(u)}</span>
+                  <span className="text-sm text-gray-700 min-w-0 truncate">{userLabel(u)}</span>
                 </label>
               ))
             )}
@@ -1457,12 +1457,12 @@ function ChannelView({
                   {m.isAi ? <Bot size={14} /> : userInitials(m.author)}
                 </div>
                 <div
-                  className={`max-w-[75%] ${
+                  className={`max-w-[75%] min-w-0 ${
                     own ? 'items-end' : 'items-start'
                   } flex flex-col`}
                 >
                   {!own && (
-                    <span className="text-[11px] text-gray-400 px-1 mb-0.5">
+                    <span className="text-[11px] text-gray-400 px-1 mb-0.5 max-w-full truncate">
                       {m.isAi ? 'AI Assistant' : userLabel(m.author)}
                     </span>
                   )}
@@ -1600,10 +1600,10 @@ function DirectMessages({ currentUserId }: { currentUserId: string | null }) {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-4 h-[640px]">
+    <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-4 h-[640px] min-w-0">
       {/* Conversation list */}
       <div
-        className={`bg-white border border-gray-200 rounded-2xl flex flex-col overflow-hidden ${
+        className={`bg-white border border-gray-200 rounded-2xl flex flex-col overflow-hidden min-w-0 ${
           activeThreadId && 'hidden md:flex'
         }`}
       >
@@ -1688,7 +1688,7 @@ function DirectMessages({ currentUserId }: { currentUserId: string | null }) {
 
       {/* Right pane: new-message picker, thread, or empty state */}
       <div
-        className={`bg-white border border-gray-200 rounded-2xl flex flex-col overflow-hidden ${
+        className={`bg-white border border-gray-200 rounded-2xl flex flex-col overflow-hidden min-w-0 ${
           !activeThreadId && !showNewMessage && 'hidden md:flex'
         }`}
       >
@@ -2073,7 +2073,7 @@ function ThreadView({
                   {userInitials(m.sender)}
                 </div>
                 <div
-                  className={`max-w-[75%] ${own ? 'items-end' : 'items-start'} flex flex-col`}
+                  className={`max-w-[75%] min-w-0 ${own ? 'items-end' : 'items-start'} flex flex-col`}
                 >
                   {isEditing ? (
                     <div className="w-full">

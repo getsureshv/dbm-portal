@@ -1280,3 +1280,23 @@ export const aiParticipant = {
       body: JSON.stringify({ prompt }),
     }),
 };
+
+// ---- Inline translation ----------------------------------------------------
+// Translates a single message body into a target language using the existing
+// Anthropic integration. Results are cached server-side by (text, targetLang).
+
+export interface TranslateResult {
+  translatedText: string;
+  detectedSourceLang?: string;
+  cached?: boolean;
+}
+
+export const translate = (
+  text: string,
+  targetLang: string,
+  sourceLang?: string,
+) =>
+  request<TranslateResult>('/translate', {
+    method: 'POST',
+    body: JSON.stringify({ text, targetLang, sourceLang }),
+  });

@@ -16,6 +16,7 @@ import { DmModule } from './modules/dm/dm.module';
 import { ChannelsModule } from './modules/channels/channels.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { AiParticipantModule } from './modules/ai-participant/ai-participant.module';
+import { TranslateModule } from './modules/translate/translate.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -43,6 +44,7 @@ import { HealthController } from './health.controller';
     ChannelsModule,
     TasksModule,
     AiParticipantModule,
+    TranslateModule,
   ],
   controllers: [HealthController],
 })

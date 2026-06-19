@@ -1034,3 +1034,18 @@ model PermissionAuditLog {
   @@index([at])
   @@map("permission_audit_log")
 }
+
+// ─── Translation cache ─────────────────────────────────────
+// Persistent cache for inline message translations so the same source text +
+// target language is never re-translated (saves Anthropic calls/cost).
+// Keyed by a sha256 hash of the normalized source text plus the target language.
+model TranslationCache {
+  id             String   @id @default(uuid()) @db.Uuid
+  textHash       String   @map("text_hash")
+  targetLang     String   @map("target_lang")
+  translatedText String   @map("translated_text")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([textHash, targetLang])
+  @@map("translation_cache")
+}

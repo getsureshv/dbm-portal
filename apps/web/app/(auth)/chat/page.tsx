@@ -44,6 +44,11 @@ import type {
   ApiTask,
   TaskStatus,
 } from '../../../lib/api';
+import {
+  useTranslator,
+  TranslatorToolbar,
+  MessageTranslation,
+} from '../../../lib/translator';
 
 // ---- small shared helpers --------------------------------------------------
 
@@ -1257,6 +1262,7 @@ function ChannelView({
   const [sending, setSending] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const translator = useTranslator(`channel:${channelId}`);
 
   messagesRef.current = messages;
 
@@ -1412,7 +1418,7 @@ function ChannelView({
         <div className="w-9 h-9 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
           {channel.isPrivate ? <Lock size={16} /> : <Hash size={16} />}
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="font-semibold text-gray-900 text-sm truncate">
             {channel.name}
           </p>
@@ -1422,6 +1428,7 @@ function ChannelView({
             </p>
           )}
         </div>
+        <TranslatorToolbar translator={translator} compact />
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -1477,6 +1484,13 @@ function ChannelView({
                   >
                     {m.body}
                   </div>
+                  {!own && m.body && (
+                    <MessageTranslation
+                      text={m.body}
+                      translator={translator}
+                      auto={translator.autoTranslate}
+                    />
+                  )}
                   <span className="text-[11px] text-gray-400 mt-1 px-1">
                     {formatTimestamp(m.createdAt)}
                   </span>
@@ -1854,6 +1868,7 @@ function ThreadView({
   const [editDraft, setEditDraft] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const translator = useTranslator(`dm:${threadId}`);
 
   messagesRef.current = messages;
 
@@ -2032,7 +2047,7 @@ function ThreadView({
         <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-semibold">
           {userInitials(thread.otherUser)}
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="font-semibold text-gray-900 text-sm truncate">
             {userLabel(thread.otherUser)}
           </p>
@@ -2042,6 +2057,7 @@ function ThreadView({
             </p>
           )}
         </div>
+        <TranslatorToolbar translator={translator} compact />
       </div>
 
       {/* Messages */}
@@ -2117,6 +2133,13 @@ function ThreadView({
                     >
                       {m.body}
                     </div>
+                  )}
+                  {!own && !isEditing && m.body && (
+                    <MessageTranslation
+                      text={m.body}
+                      translator={translator}
+                      auto={translator.autoTranslate}
+                    />
                   )}
                   <div
                     className={`flex items-center gap-2 mt-1 px-1 ${

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronRight, ChevronDown, Loader2, AlertCircle, Pencil, ScanLine, Eye, X, Check, Wand2, Trash2, UserPlus, Mail, Clock, Building2, Globe, Phone, MessageSquare, Send, Bot } from 'lucide-react';
 import { useAuth } from '../../../../lib/auth-context';
 import { projects as projectsApi, uploads as uploadsApi, documents as documentsApi, aiParticipant as aiApi, ApiProject, ApiDocument, ProjectGrant, ApiProjectNote, ApiProjectMessage } from '../../../../lib/api';
+import { useTranslator, TranslatorToolbar, MessageTranslation } from '../../../../lib/translator';
 
 type TabType = 'overview' | 'documents' | 'scope' | 'chat' | 'team';
 
@@ -813,6 +814,7 @@ function ProjectChat({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const messagesRef = useRef<ApiProjectMessage[]>([]);
   messagesRef.current = messages;
+  const translator = useTranslator(`project:${projectId}`);
 
   const scrollToBottom = (smooth = true) => {
     const el = scrollRef.current;
@@ -998,12 +1000,15 @@ function ProjectChat({
   return (
     <div className="bg-white border border-gray-200 rounded-2xl shadow-sm flex flex-col h-[600px]">
       {/* Header */}
-      <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-100">
-        <MessageSquare size={20} className="text-amber-500" />
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-6 py-4 border-b border-gray-100">
+        <MessageSquare size={20} className="text-amber-500 flex-shrink-0" />
         <h2 className="text-lg font-bold text-gray-900">Team Chat</h2>
-        <span className="text-sm text-gray-400">
+        <span className="text-sm text-gray-400 min-w-0 truncate">
           Everyone with access to this project can chat here
         </span>
+        <div className="ml-auto">
+          <TranslatorToolbar translator={translator} compact />
+        </div>
       </div>
 
       {/* Messages */}
@@ -1117,6 +1122,14 @@ function ProjectChat({
                     >
                       {m.body}
                     </div>
+                  )}
+
+                  {!isOwn && !isEditing && m.body && (
+                    <MessageTranslation
+                      text={m.body}
+                      translator={translator}
+                      auto={translator.autoTranslate}
+                    />
                   )}
 
                   {isOwn && !isEditing && (

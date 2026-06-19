@@ -12,6 +12,8 @@ Be concise, friendly, and helpful about construction project management, scope o
 @Injectable()
 export class AiParticipantService {
   private anthropic: Anthropic | null = null;
+  // Current Sonnet — better for chat replies. Overridable via env.
+  private readonly model = process.env.AI_MODEL || 'claude-sonnet-4-6';
 
   constructor(
     private configService: ConfigService,
@@ -71,7 +73,7 @@ export class AiParticipantService {
 
     try {
       const response = await this.anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: this.model,
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userContent }],
@@ -141,7 +143,7 @@ export class AiParticipantService {
 
     try {
       const response = await this.anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: this.model,
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userContent }],

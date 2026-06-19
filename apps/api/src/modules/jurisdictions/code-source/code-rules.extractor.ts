@@ -412,7 +412,7 @@ export async function extractRules(params: {
     sourceUrl,
     docs,
     fetchImpl = fetch,
-    model = 'claude-sonnet-4-20250514',
+    model = 'claude-sonnet-4-6',
   } = params;
 
   if (!anthropic) return [];

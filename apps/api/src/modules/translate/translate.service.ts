@@ -13,18 +13,15 @@ export interface TranslateResult {
 @Injectable()
 export class TranslateService {
   private anthropic: Anthropic | null = null;
-  // Same model family the AI participant uses, kept in sync deliberately.
-  private readonly model = 'claude-sonnet-4-20250514';
-  private readonly apiKeyPresent: boolean;
-  private readonly apiKeyLength: number;
+  // Fast, cheap model is ideal for translation. Overridable via env.
+  private readonly model =
+    process.env.TRANSLATE_MODEL || 'claude-haiku-4-5-20251001';
 
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
   ) {
     const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
-    this.apiKeyPresent = !!apiKey;
-    this.apiKeyLength = apiKey ? apiKey.length : 0;
     if (apiKey) {
       this.anthropic = new Anthropic({ apiKey });
     } else {
@@ -135,76 +132,5 @@ export class TranslateService {
     }
 
     return { translatedText, cached: false };
-  }
-
-  // ---------------------------------------------------------------------------
-  // TEMPORARY DIAGNOSTIC — remove once the production translate issue is
-  // resolved. Exposed via GET /translate/health. Never returns the API key
-  // value; only booleans, key length, and the real underlying error messages.
-  // ---------------------------------------------------------------------------
-  async diagnostics(): Promise<{
-    anthropicKeyPresent: boolean;
-    anthropicKeyLength: number;
-    model: string;
-    cacheTableOk: boolean;
-    cacheError?: string;
-    testTranslation:
-      | { ok: true; result: string }
-      | { ok: false; error: string };
-  }> {
-    // Probe the cache table with a trivial query.
-    let cacheTableOk = false;
-    let cacheError: string | undefined;
-    try {
-      await this.prisma.translationCache.count();
-      cacheTableOk = true;
-    } catch (err: any) {
-      cacheError = `status=${err?.code ?? err?.status ?? 'n/a'} message=${err?.message ?? String(err)}`;
-    }
-
-    // Attempt a tiny live translation to surface the REAL Anthropic error.
-    let testTranslation:
-      | { ok: true; result: string }
-      | { ok: false; error: string };
-    if (!this.anthropic) {
-      testTranslation = {
-        ok: false,
-        error: 'Anthropic client not initialized (ANTHROPIC_API_KEY missing).',
-      };
-    } else {
-      try {
-        const response = await this.anthropic.messages.create({
-          model: this.model,
-          max_tokens: 64,
-          system:
-            'You are a precise translation engine. Return ONLY the translated text.',
-          messages: [
-            {
-              role: 'user',
-              content: 'Target language: English\n\nText:\nhola',
-            },
-          ],
-          stream: false,
-        });
-        const block = response.content.find((b) => b.type === 'text');
-        const result =
-          block && block.type === 'text' ? block.text.trim() : '';
-        testTranslation = { ok: true, result };
-      } catch (err: any) {
-        testTranslation = {
-          ok: false,
-          error: `status=${err?.status ?? 'n/a'} name=${err?.name ?? 'n/a'} message=${err?.message ?? String(err)}`,
-        };
-      }
-    }
-
-    return {
-      anthropicKeyPresent: this.apiKeyPresent,
-      anthropicKeyLength: this.apiKeyLength,
-      model: this.model,
-      cacheTableOk,
-      cacheError,
-      testTranslation,
-    };
   }
 }

@@ -145,7 +145,7 @@ export class DocumentsService {
 
     // Call Claude API
     const response = await this.anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system:
         'You are a construction document analyst. Extract all text content from this document. Organize the extracted information clearly with headings. For construction documents, identify: project details, scope items, specifications, quantities, costs, dates, parties involved, and any terms or conditions. Return the extracted text in a clean, readable format.',
@@ -327,7 +327,7 @@ Respond with ONLY valid JSON, no prose, no code fences:
 }`;
 
     const response = await this.anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: systemPrompt,
       messages: [

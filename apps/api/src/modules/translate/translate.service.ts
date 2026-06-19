@@ -1,7 +1,7 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
-import Anthropic from '@anthropic-ai/sdk';
+import { callAnthropic } from '../../common/anthropic';
 import { PrismaService } from '../../common/prisma.service';
 
 export interface TranslateResult {
@@ -12,7 +12,7 @@ export interface TranslateResult {
 
 @Injectable()
 export class TranslateService {
-  private anthropic: Anthropic | null = null;
+  private apiKey: string | null = null;
   // Fast, cheap model is ideal for translation. Overridable via env.
   private readonly model =
     process.env.TRANSLATE_MODEL || 'claude-haiku-4-5-20251001';
@@ -23,7 +23,7 @@ export class TranslateService {
   ) {
     const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
     if (apiKey) {
-      this.anthropic = new Anthropic({ apiKey });
+      this.apiKey = apiKey;
     } else {
       console.warn(
         'ANTHROPIC_API_KEY not configured — translation features will be unavailable',
@@ -67,8 +67,8 @@ export class TranslateService {
       );
     }
 
-    // 2) No Anthropic client → graceful 503 so the UI can show a notice.
-    if (!this.anthropic) {
+    // 2) No API key → graceful 503 so the UI can show a notice.
+    if (!this.apiKey) {
       throw new ServiceUnavailableException(
         'Translation is not configured. Set ANTHROPIC_API_KEY to enable it.',
       );
@@ -86,23 +86,21 @@ export class TranslateService {
 
     let translatedText: string;
     try {
-      const response = await this.anthropic.messages.create({
+      const { text } = await callAnthropic({
+        apiKey: this.apiKey,
         model: this.model,
-        max_tokens: 2048,
+        maxTokens: 2048,
         system,
         messages: [{ role: 'user', content: userContent }],
-        stream: false,
       });
-      const block = response.content.find((b) => b.type === 'text');
-      translatedText =
-        block && block.type === 'text' ? block.text.trim() : '';
+      translatedText = text.trim();
     } catch (err: any) {
       // Surface the REAL underlying error server-side for diagnosis. The
-      // Anthropic SDK puts the HTTP status on `err.status` and a detailed
-      // message on `err.message` (e.g. 401 auth, 404 unknown model, 400 bad
+      // native-fetch helper throws an Error whose message carries the HTTP
+      // status + response body (e.g. 401 auth, 404 unknown model, 400 bad
       // request). The client still receives the friendly message below.
       console.error(
-        `Translation error: status=${err?.status ?? 'n/a'} name=${err?.name ?? 'n/a'} message=${err?.message ?? err}`,
+        `Translation error: message=${err?.message ?? err}`,
       );
       throw new ServiceUnavailableException(
         'Translation service is temporarily unavailable. Please try again.',

@@ -31,49 +31,6 @@ export class TranslateService {
     }
   }
 
-  // TEMP DIAG — remove after diagnosis. Runs the SAME live Anthropic call the
-  // translate path uses (same callAnthropic helper + same model), translating
-  // "Hello" to "Hindi", and returns the REAL error message on failure. Never
-  // leaks the API key (length only).
-  async diag(): Promise<{
-    keyPresent: boolean;
-    keyLen: number;
-    model: string;
-    nodeEnv: string;
-    ok: boolean;
-    translatedText?: string;
-    error?: string;
-  }> {
-    const base = {
-      keyPresent: !!this.apiKey,
-      keyLen: this.apiKey ? this.apiKey.length : 0,
-      model: this.model,
-      nodeEnv: process.env.NODE_ENV ?? 'undefined',
-    };
-
-    if (!this.apiKey) {
-      return { ...base, ok: false, error: 'ANTHROPIC_API_KEY not configured' };
-    }
-
-    try {
-      const { text } = await callAnthropic({
-        apiKey: this.apiKey,
-        model: this.model,
-        maxTokens: 2048,
-        system:
-          'You are a precise translation engine. Return ONLY the translated text with no preamble.',
-        messages: [
-          { role: 'user', content: 'Target language: Hindi\n\nText:\nHello' },
-        ],
-      });
-      return { ...base, ok: true, translatedText: text.trim() };
-    } catch (err: any) {
-      // Put the FULL real "Anthropic <status>: <body>" message in error — do
-      // NOT swallow.
-      return { ...base, ok: false, error: err?.message ?? String(err) };
-    }
-  }
-
   private hash(text: string): string {
     // Normalize whitespace so trivially different inputs share a cache entry.
     const normalized = text.trim().replace(/\s+/g, ' ');

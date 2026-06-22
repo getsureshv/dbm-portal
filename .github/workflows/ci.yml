@@ -121,7 +121,7 @@ jobs:
       - name: Run API tests
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/dbm_test
-        run: cd apps/api && pnpm test
+        run: cd apps/api && pnpm test -- --forceExit
 
   all-checks:
     name: All Checks Passed

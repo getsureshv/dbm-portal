@@ -1346,28 +1346,21 @@ export function MicRecorderControl({
   const near = elapsed >= RECORDING_WARN_MS;
 
   if (phase === 'recording') {
-    // Full-width, mobile-safe row: trash + timer shrink (min-w-0), while the
-    // Stop button never shrinks (flex-shrink-0) so it stays visible and tappable
-    // on a narrow composer (e.g. Samsung Z Fold cover screen). The composer
-    // hides its textarea/send while recording (via onRecordingChange) so this
-    // row owns the full width and Stop can't be clipped off the right edge.
+    // Left-aligned compact group: [red dot + timer][Stop][trash], packed at the
+    // START of the composer (where the mic button normally sits) and only as wide
+    // as its contents. No w-full, no flex-1 spacer, no justify-between/ml-auto —
+    // those previously pushed Stop to the far-right edge where the composer's
+    // overflow clipped it out of view. Stop is flex-shrink-0 and prominent so it
+    // is always tappable at laptop (1366px, ~626px pane) and narrow mobile widths.
     return (
-      <div className="flex w-full items-center gap-2 min-w-0">
-        <button
-          type="button"
-          onClick={cancel}
-          aria-label="Cancel recording"
-          className="flex-shrink-0 p-2 text-gray-400 hover:text-red-600"
-        >
-          <Trash2 size={18} />
-        </button>
+      <div className="inline-flex items-center gap-2 min-w-0">
         <span
-          className={`flex-1 min-w-0 flex items-center text-xs tabular-nums font-medium ${
+          className={`flex-shrink-0 inline-flex items-center text-xs tabular-nums font-medium ${
             near ? 'text-red-600' : 'text-gray-600'
           }`}
         >
           <span className="inline-block flex-shrink-0 w-2 h-2 rounded-full bg-red-500 mr-1.5 animate-pulse align-middle" />
-          <span className="truncate">
+          <span className="whitespace-nowrap">
             {fmtElapsed(elapsed)}
             {near && ' / 5:00'}
           </span>
@@ -1380,6 +1373,14 @@ export function MicRecorderControl({
         >
           <Square size={16} />
           Stop
+        </button>
+        <button
+          type="button"
+          onClick={cancel}
+          aria-label="Cancel recording"
+          className="flex-shrink-0 p-2 text-gray-400 hover:text-red-600"
+        >
+          <Trash2 size={18} />
         </button>
       </div>
     );

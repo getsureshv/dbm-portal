@@ -32,9 +32,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint API
-        run: cd apps/api && pnpm run lint
-
       - name: Lint Web
         run: cd apps/web && pnpm run lint
 

@@ -1535,11 +1535,13 @@ function ChannelView({
         className="p-3 border-t border-gray-100"
       >
         <PendingAttachments attachments={attachments} />
-        <form onSubmit={send} className="flex items-end gap-2">
-          <AttachmentPickerButton
-            onPick={(files) => attachments.addFiles(files)}
-            disabled={sending}
-          />
+        <form onSubmit={send} className="flex items-end gap-2 min-w-0">
+          {!recording && (
+            <AttachmentPickerButton
+              onPick={(files) => attachments.addFiles(files)}
+              disabled={sending}
+            />
+          )}
           <MicRecorderControl
             attachments={attachments}
             disabled={sending}
@@ -2261,11 +2263,13 @@ function ThreadView({
         className="p-3 border-t border-gray-100"
       >
         <PendingAttachments attachments={attachments} />
-        <form onSubmit={send} className="flex items-end gap-2">
-          <AttachmentPickerButton
-            onPick={(files) => attachments.addFiles(files)}
-            disabled={sending}
-          />
+        <form onSubmit={send} className="flex items-end gap-2 min-w-0">
+          {!recording && (
+            <AttachmentPickerButton
+              onPick={(files) => attachments.addFiles(files)}
+              disabled={sending}
+            />
+          )}
           <MicRecorderControl
             attachments={attachments}
             disabled={sending}

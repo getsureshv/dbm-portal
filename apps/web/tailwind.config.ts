@@ -4,6 +4,11 @@ const config: Config = {
   content: [
     './app/**/*.{js,ts,jsx,tsx}',
     './components/**/*.{js,ts,jsx,tsx}',
+    // Shared UI lives here too (e.g. lib/attachments.tsx's recorder bar). Without
+    // this glob, classes used ONLY in lib/ (like bg-red-500 on the Stop button)
+    // are purged from the production CSS — making the button white-on-white and
+    // effectively invisible. This was the real "Stop button doesn't work" cause.
+    './lib/**/*.{js,ts,jsx,tsx}',
   ],
   theme: {
     extend: {

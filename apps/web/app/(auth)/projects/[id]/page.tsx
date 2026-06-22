@@ -1204,11 +1204,13 @@ function ProjectChat({
         className="border-t border-gray-100 px-6 py-4"
       >
         <PendingAttachments attachments={attachments} />
-        <form onSubmit={send} className="flex items-end gap-3">
-          <AttachmentPickerButton
-            onPick={(files) => attachments.addFiles(files)}
-            disabled={sending}
-          />
+        <form onSubmit={send} className="flex items-end gap-3 min-w-0">
+          {!recording && (
+            <AttachmentPickerButton
+              onPick={(files) => attachments.addFiles(files)}
+              disabled={sending}
+            />
+          )}
           <MicRecorderControl
             attachments={attachments}
             disabled={sending}

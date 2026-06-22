@@ -643,13 +643,6 @@ export function PendingAttachments({
             </div>
           )}
 
-          {/* audio badge + label */}
-          {p.kind === 'audio' && p.status !== 'error' && (
-            <div className="absolute bottom-0.5 left-0.5 bg-black/60 text-white rounded px-1 py-px flex items-center gap-0.5 pointer-events-none">
-              <Mic size={10} />
-            </div>
-          )}
-
           {/* uploading overlay (pointer-events-none so the remove button stays clickable) */}
           {p.status === 'uploading' && (
             <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white pointer-events-none">
@@ -668,15 +661,24 @@ export function PendingAttachments({
             </div>
           )}
 
+          {/* audio "Voice memo" label so a staged recording is recognizable */}
+          {p.kind === 'audio' && p.status !== 'error' && (
+            <div className="absolute bottom-0 inset-x-0 bg-black/55 text-white text-[9px] text-center py-px pointer-events-none">
+              Voice memo
+            </div>
+          )}
+
           {/* Always-visible remove button. z-10 keeps it above the overlays so an
-              attachment can be cancelled/removed even while uploading or errored. */}
+              attachment can be cancelled/removed even while uploading or errored.
+              Sized large enough to be an easy tap target on mobile (esp. for the
+              audio thumbnail, which has no preview image to anchor it). */}
           <button
             type="button"
             onClick={() => remove(p.localId)}
             aria-label="Remove attachment"
-            className="absolute top-0.5 right-0.5 z-10 bg-black/60 hover:bg-black/80 text-white rounded-full p-1 leading-none"
+            className="absolute top-0.5 right-0.5 z-10 bg-black/70 hover:bg-black/90 text-white rounded-full p-1.5 leading-none shadow"
           >
-            <X size={14} />
+            <X size={16} />
           </button>
         </div>
       ))}
@@ -1346,20 +1348,22 @@ export function MicRecorderControl({
   const near = elapsed >= RECORDING_WARN_MS;
 
   if (phase === 'recording') {
-    // Left-aligned compact group: [red dot + timer][Stop][trash], packed at the
-    // START of the composer (where the mic button normally sits) and only as wide
-    // as its contents. No w-full, no flex-1 spacer, no justify-between/ml-auto —
-    // those previously pushed Stop to the far-right edge where the composer's
-    // overflow clipped it out of view. Stop is flex-shrink-0 and prominent so it
-    // is always tappable at laptop (1366px, ~626px pane) and narrow mobile widths.
+    // SELF-CONTAINED full-width recorder bar that OWNS the composer row. The
+    // composer hides the textarea+send while recording, so this is the only
+    // child — w-full lets it take the whole row instead of sizing to content
+    // and overflowing the pane (the prior bug: buttons pushed to x~1315 and
+    // clipped by the pane's overflow-hidden). Buttons are LEFT-anchored right
+    // after the timer (no ml-auto / justify-between / flex-1 spacer), each
+    // flex-shrink-0 with a TEXT label. flex-wrap lets the buttons drop to a
+    // second line on very narrow widths rather than being clipped.
     return (
-      <div className="inline-flex items-center gap-2 min-w-0">
+      <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
         <span
-          className={`flex-shrink-0 inline-flex items-center text-xs tabular-nums font-medium ${
+          className={`flex-shrink-0 inline-flex items-center text-sm tabular-nums font-medium ${
             near ? 'text-red-600' : 'text-gray-600'
           }`}
         >
-          <span className="inline-block flex-shrink-0 w-2 h-2 rounded-full bg-red-500 mr-1.5 animate-pulse align-middle" />
+          <span className="inline-block flex-shrink-0 w-2.5 h-2.5 rounded-full bg-red-500 mr-1.5 animate-pulse align-middle" />
           <span className="whitespace-nowrap">
             {fmtElapsed(elapsed)}
             {near && ' / 5:00'}
@@ -1369,7 +1373,7 @@ export function MicRecorderControl({
           type="button"
           onClick={stop}
           aria-label="Stop recording"
-          className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-red-500 text-white text-xs font-medium hover:bg-red-600"
+          className="flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 min-h-[40px] rounded-full bg-red-500 text-white text-sm font-semibold hover:bg-red-600"
         >
           <Square size={16} />
           Stop
@@ -1377,10 +1381,11 @@ export function MicRecorderControl({
         <button
           type="button"
           onClick={cancel}
-          aria-label="Cancel recording"
-          className="flex-shrink-0 p-2 text-gray-400 hover:text-red-600"
+          aria-label="Delete recording"
+          className="flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 min-h-[40px] rounded-full border border-gray-300 text-gray-600 text-sm font-medium hover:bg-gray-50 hover:text-red-600"
         >
-          <Trash2 size={18} />
+          <Trash2 size={16} />
+          Delete
         </button>
       </div>
     );

@@ -72,6 +72,61 @@ services:
       - key: AWS_S3_ENDPOINT
         sync: false
 
+      # ── Speech-to-text (OpenAI Whisper) ──
+      # REQUIRED for voice-memo transcription. Without it, STT breaks.
+      - key: OPENAI_API_KEY
+        sync: false
+      # Optional model overrides — code defaults are used if left unset.
+      # WHISPER_MODEL default: whisper-1
+      - key: WHISPER_MODEL
+        sync: false
+      # AI_MODEL default: claude-sonnet-4-6 (in-chat AI assistant)
+      - key: AI_MODEL
+        sync: false
+      # TRANSLATE_MODEL default: claude-haiku-4-5-20251001 (message translation)
+      - key: TRANSLATE_MODEL
+        sync: false
+
+      # ── Permits / jurisdiction data sources ──
+      # Shovels (building permits)
+      - key: SHOVELS_API_KEY
+        sync: false
+      # Dallas OpenData / Socrata (open-data permits; empty = rate-limited anon access)
+      - key: DALLAS_OPENDATA_APP_TOKEN
+        sync: false
+      - key: SOCRATA_APP_TOKEN
+        sync: false
+      # Accela permits (all four needed for the Accela adapter)
+      - key: ACCELA_APP_ID
+        sync: false
+      - key: ACCELA_APP_SECRET
+        sync: false
+      # ACCELA_AGENCY default: DALLAS_TX · ACCELA_ENV default: Sandbox
+      - key: ACCELA_AGENCY
+        sync: false
+      - key: ACCELA_ENV
+        sync: false
+
+      # ── Vendor / business discovery providers ──
+      # Each is optional; an empty key simply skips that provider.
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
+      - key: FOURSQUARE_API_KEY
+        sync: false
+      - key: YELP_API_KEY
+        sync: false
+      - key: SERP_API_KEY
+        sync: false
+      # Comma-separated allow-list of discovery providers to merge into results
+      # (e.g. "google-places"). Empty = no extra providers merged.
+      - key: WEB_SEARCH_MERGE
+        sync: false
+
+      # ── Misc ──
+      # CORS_ALLOW_ALL="true" relaxes CORS (dev/debug only). Default: false.
+      - key: CORS_ALLOW_ALL
+        sync: false
+
   # ─── Web (Next.js) ─────────────────────────────────────────
   - type: web
     name: dbm-portal-web

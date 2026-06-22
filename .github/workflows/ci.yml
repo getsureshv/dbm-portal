@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-check:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint API
+        run: cd apps/api && pnpm run lint
+
+      - name: Lint Web
+        run: cd apps/web && pnpm run lint
+
+      - name: Typecheck API
+        run: cd apps/api && pnpm run typecheck
+
+      - name: Typecheck Web
+        run: cd apps/web && npx tsc --noEmit
+
+  build:
+    name: Build API & Web
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: lint-and-check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build API
+        run: cd apps/api && pnpm run build
+
+      - name: Build Web
+        run: cd apps/web && pnpm run build
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: lint-and-check
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: dbm_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup test database
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/dbm_test
+        run: |
+          cd apps/api
+          npx prisma migrate deploy
+
+      - name: Run API tests
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/dbm_test
+        run: cd apps/api && pnpm test
+
+  migration-guard:
+    name: Migration Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check migrations
+        run: node .github/workflows/migration-guard.js
+
+  all-checks:
+    name: All Checks Passed
+    runs-on: ubuntu-latest
+    needs: [lint-and-check, build, test, migration-guard]
+    if: always()
+
+    steps:
+      - name: Decide whether the checks passed
+        run: |
+          if [[ "${{ needs.lint-and-check.result }}" == "failure" || \
+                "${{ needs.build.result }}" == "failure" || \
+                "${{ needs.test.result }}" == "failure" || \
+                "${{ needs.migration-guard.result }}" == "failure" ]]; then
+            echo "❌ One or more checks failed"
+            exit 1
+          fi
+          echo "✅ All checks passed"

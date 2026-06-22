@@ -119,10 +119,11 @@ jobs:
           npx prisma migrate deploy
 
       - name: Run API tests
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/dbm_test
-          ANTHROPIC_API_KEY: test-key-for-ci
-        run: cd apps/api && pnpm test -- --forceExit
+        run: |
+          cd apps/api
+          ANTHROPIC_API_KEY=test-key-for-ci \
+          DATABASE_URL=postgresql://test:test@localhost:5432/dbm_test \
+          pnpm test -- --forceExit
 
   all-checks:
     name: All Checks Passed

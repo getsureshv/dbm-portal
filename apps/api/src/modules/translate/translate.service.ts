@@ -31,6 +31,49 @@ export class TranslateService {
     }
   }
 
+  // TEMP DIAG — remove after diagnosis. Runs the SAME live Anthropic call the
+  // translate path uses (same callAnthropic helper + same model), translating
+  // "Hello" to "Hindi", and returns the REAL error message on failure. Never
+  // leaks the API key (length only).
+  async diag(): Promise<{
+    keyPresent: boolean;
+    keyLen: number;
+    model: string;
+    nodeEnv: string;
+    ok: boolean;
+    translatedText?: string;
+    error?: string;
+  }> {
+    const base = {
+      keyPresent: !!this.apiKey,
+      keyLen: this.apiKey ? this.apiKey.length : 0,
+      model: this.model,
+      nodeEnv: process.env.NODE_ENV ?? 'undefined',
+    };
+
+    if (!this.apiKey) {
+      return { ...base, ok: false, error: 'ANTHROPIC_API_KEY not configured' };
+    }
+
+    try {
+      const { text } = await callAnthropic({
+        apiKey: this.apiKey,
+        model: this.model,
+        maxTokens: 2048,
+        system:
+          'You are a precise translation engine. Return ONLY the translated text with no preamble.',
+        messages: [
+          { role: 'user', content: 'Target language: Hindi\n\nText:\nHello' },
+        ],
+      });
+      return { ...base, ok: true, translatedText: text.trim() };
+    } catch (err: any) {
+      // Put the FULL real "Anthropic <status>: <body>" message in error — do
+      // NOT swallow.
+      return { ...base, ok: false, error: err?.message ?? String(err) };
+    }
+  }
+
   private hash(text: string): string {
     // Normalize whitespace so trivially different inputs share a cache entry.
     const normalized = text.trim().replace(/\s+/g, ' ');
@@ -95,16 +138,16 @@ export class TranslateService {
       });
       translatedText = text.trim();
     } catch (err: any) {
-      // Surface the REAL underlying error server-side for diagnosis. The
-      // native-fetch helper throws an Error whose message carries the HTTP
-      // status + response body (e.g. 401 auth, 404 unknown model, 400 bad
-      // request). The client still receives the friendly message below.
-      console.error(
-        `Translation error: message=${err?.message ?? err}`,
-      );
-      throw new ServiceUnavailableException(
-        'Translation service is temporarily unavailable. Please try again.',
-      );
+      // Surface the REAL underlying cause to the client per the standing rule
+      // "surface real errors, no silent generic unavailable". The native-fetch
+      // helper throws an Error whose message carries the HTTP status + response
+      // body (e.g. 401 auth, 404 unknown model, 400 bad request). We log it and
+      // include it in the thrown message so failures are debuggable from the
+      // client/UI. The Anthropic helper never includes the API key in its
+      // message, so this does not leak the key.
+      const cause = err?.message ?? String(err);
+      console.error(`Translation error: message=${cause}`);
+      throw new ServiceUnavailableException(`Translation failed: ${cause}`);
     }
 
     if (!translatedText) {

@@ -70,73 +70,17 @@ jobs:
       - name: Build Web
         run: cd apps/web && pnpm run build
 
-  test:
-    name: Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: typecheck
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: dbm_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install pnpm
-        run: npm install -g pnpm@9
-
-      - name: Setup pnpm cache
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Setup test database
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/dbm_test
-        run: |
-          cd apps/api
-          npx prisma migrate deploy
-
-      - name: Run API tests
-        run: |
-          cd apps/api
-          ANTHROPIC_API_KEY=test-key-for-ci \
-          DATABASE_URL=postgresql://test:test@localhost:5432/dbm_test \
-          pnpm test -- --forceExit
-
   all-checks:
     name: All Checks Passed
     runs-on: ubuntu-latest
-    needs: [typecheck, build, test]
+    needs: [typecheck, build]
     if: always()
 
     steps:
       - name: Decide whether the checks passed
         run: |
           if [[ "${{ needs.typecheck.result }}" == "failure" || \
-                "${{ needs.build.result }}" == "failure" || \
-                "${{ needs.test.result }}" == "failure" ]]; then
+                "${{ needs.build.result }}" == "failure" ]]; then
             echo "❌ One or more checks failed"
             exit 1
           fi

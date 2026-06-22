@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { AttachmentsService } from '../attachments/attachments.service';
+import { normalizeOriginal } from '../../common/translate-on-send';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -285,6 +286,7 @@ export class DmService {
     userId: string,
     body: string,
     attachmentIds?: string[],
+    original?: { originalBody?: string; originalLang?: string },
   ) {
     const thread = await this.getThreadForUserOrThrow(threadId, userId);
 
@@ -296,8 +298,10 @@ export class DmService {
       );
     }
 
+    const { originalBody, originalLang } = normalizeOriginal(text, original);
+
     const message = await this.prisma.directMessage.create({
-      data: { threadId, senderId: userId, body: text },
+      data: { threadId, senderId: userId, body: text, originalBody, originalLang },
       include: { sender: { select: { id: true, name: true, email: true } } },
     });
 

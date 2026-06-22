@@ -29,7 +29,15 @@ export const LANGUAGES: TranslatorLanguage[] = [
   { code: 'Tagalog', label: 'Tagalog' },
 ];
 
-const DEFAULT_LANG = 'English';
+export const DEFAULT_LANG = 'English';
+
+// True when the selected target means "do not translate" (English / unset).
+// The language list uses human-readable codes ('English'), so the no-op
+// sentinel is DEFAULT_LANG rather than the ISO 'en'.
+export function isNoTranslateTarget(targetLang: string | null | undefined): boolean {
+  const t = (targetLang ?? '').trim().toLowerCase();
+  return t === '' || t === 'english' || t === 'en';
+}
 
 function langKey(conversationKey: string) {
   return `dbm_xlate_lang:${conversationKey}`;
@@ -147,6 +155,84 @@ export function TranslatorToolbar({
         />
         Auto-translate
       </label>
+    </div>
+  );
+}
+
+// ---- Translate-on-send -----------------------------------------------------
+// Shared by all three composers (DM, Channel, Project). When the conversation
+// has Auto-translate ON and a non-English target selected, translate the
+// outgoing text into that target before sending. Returns the fields to POST:
+//   - body:         what gets stored/displayed (translation, or original)
+//   - originalBody: the pre-translation text when a translation happened
+//   - originalLang: 'auto' marker (server auto-detects source)
+//   - failed:       true when the /translate call errored — the composer should
+//                   surface a non-blocking "Couldn't translate — sent original"
+//                   notice. The send still proceeds with the original text.
+export interface OutgoingTranslation {
+  body: string;
+  originalBody: string | null;
+  originalLang: string | null;
+  failed: boolean;
+}
+
+export async function translateOutgoing(
+  text: string,
+  translator: Pick<UseTranslator, 'targetLang' | 'autoTranslate' | 'translate'>,
+): Promise<OutgoingTranslation> {
+  const original = text;
+  const trimmed = text.trim();
+  // Edge cases 1, 2, 4: no target / English target / auto off / empty -> no-op.
+  if (
+    !trimmed ||
+    !translator.autoTranslate ||
+    isNoTranslateTarget(translator.targetLang)
+  ) {
+    return { body: original, originalBody: null, originalLang: null, failed: false };
+  }
+
+  try {
+    const translated = await translator.translate(original);
+    const out = (translated ?? '').trim();
+    // Edge case 3: translation came back identical (already target lang) -> no
+    // "Show original" toggle, store originalBody null.
+    if (!out || out === trimmed) {
+      return { body: original, originalBody: null, originalLang: null, failed: false };
+    }
+    return { body: translated, originalBody: original, originalLang: 'auto', failed: false };
+  } catch {
+    // Edge case 7: key missing / translate failed -> send original, flag it.
+    return { body: original, originalBody: null, originalLang: null, failed: true };
+  }
+}
+
+// ---- "Show original" toggle for the sender's own sent bubbles ---------------
+// Renders under a sent message that was translated on send. `body` is the shown
+// translation; `originalBody` is the pre-translation text. Toggling swaps which
+// one is displayed. Mirrors the visual pattern of MessageTranslation.
+export function SentMessageTranslation({
+  body,
+  originalBody,
+  className = '',
+}: {
+  body: string;
+  originalBody: string;
+  className?: string;
+}) {
+  const [showingOriginal, setShowingOriginal] = useState(false);
+  return (
+    <div className={className}>
+      <div className="whitespace-pre-wrap break-words">
+        {showingOriginal ? originalBody : body}
+      </div>
+      <button
+        type="button"
+        onClick={() => setShowingOriginal((v) => !v)}
+        className="mt-1 inline-flex items-center gap-1 text-[11px] opacity-80 hover:opacity-100 underline-offset-2 hover:underline"
+      >
+        <Languages size={11} />
+        {showingOriginal ? 'Show translation' : 'Show original'}
+      </button>
     </div>
   );
 }

@@ -120,6 +120,14 @@ export interface ApiProject {
   notes?: ApiProjectNote[];
 }
 
+// Translate-on-send: when present on a sent message, `body` is the displayed
+// translation and `originalBody` is the pre-translation text (drives the
+// "Show original" toggle on the sender's own bubble). Null on untranslated rows.
+export interface OutgoingTranslationFields {
+  originalBody?: string | null;
+  originalLang?: string | null;
+}
+
 // A chat message in a project's team conversation.
 export interface ApiProjectMessage {
   id: string;
@@ -128,6 +136,8 @@ export interface ApiProjectMessage {
   authorId: string | null;
   isAi?: boolean;
   body: string;
+  originalBody?: string | null;
+  originalLang?: string | null;
   createdAt: string;
   updatedAt: string;
   author: { id: string; name: string | null; email: string } | null;
@@ -283,10 +293,15 @@ export const projects = {
       `/projects/${projectId}/messages${after ? `?after=${after}` : ''}`,
     ),
 
-  addMessage: (projectId: string, body: string, attachmentIds?: string[]) =>
+  addMessage: (
+    projectId: string,
+    body: string,
+    attachmentIds?: string[],
+    original?: OutgoingTranslationFields,
+  ) =>
     request<ApiProjectMessage>(`/projects/${projectId}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ body, attachmentIds }),
+      body: JSON.stringify({ body, attachmentIds, ...original }),
     }),
 
   updateMessage: (projectId: string, messageId: string, body: string) =>
@@ -950,6 +965,8 @@ export interface ApiDmMessage {
   threadId: string;
   senderId: string;
   body: string;
+  originalBody?: string | null;
+  originalLang?: string | null;
   createdAt: string;
   updatedAt: string;
   sender: { id: string; name: string | null; email: string };
@@ -991,10 +1008,15 @@ export const dm = {
     return request<ApiDmMessage[]>(`/dm/threads/${threadId}/messages${qs}`);
   },
 
-  addMessage: (threadId: string, body: string, attachmentIds?: string[]) =>
+  addMessage: (
+    threadId: string,
+    body: string,
+    attachmentIds?: string[],
+    original?: OutgoingTranslationFields,
+  ) =>
     request<ApiDmMessage>(`/dm/threads/${threadId}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ body, attachmentIds }),
+      body: JSON.stringify({ body, attachmentIds, ...original }),
     }),
 
   updateMessage: (threadId: string, messageId: string, body: string) =>
@@ -1179,6 +1201,8 @@ export interface ApiChannelMessage {
   authorId: string | null;
   isAi: boolean;
   body: string;
+  originalBody?: string | null;
+  originalLang?: string | null;
   createdAt: string;
   updatedAt: string;
   author: { id: string; name: string | null; email: string } | null;
@@ -1227,10 +1251,15 @@ export const channels = {
     return request<ApiChannelMessage[]>(`/channels/${id}/messages${qs}`);
   },
 
-  addMessage: (id: string, body: string, attachmentIds?: string[]) =>
+  addMessage: (
+    id: string,
+    body: string,
+    attachmentIds?: string[],
+    original?: OutgoingTranslationFields,
+  ) =>
     request<ApiChannelMessage>(`/channels/${id}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ body, attachmentIds }),
+      body: JSON.stringify({ body, attachmentIds, ...original }),
     }),
 
   updateMessage: (id: string, messageId: string, body: string) =>

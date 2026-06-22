@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../../common/prisma.service';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { CreateChannelDto } from './dto/channel.dto';
+import { normalizeOriginal } from '../../common/translate-on-send';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -415,6 +416,7 @@ export class ChannelsService {
     userId: string,
     body: string,
     attachmentIds?: string[],
+    original?: { originalBody?: string; originalLang?: string },
   ) {
     this.validateUuid(channelId);
     await this.requireMembership(channelId, userId);
@@ -427,8 +429,17 @@ export class ChannelsService {
       );
     }
 
+    const { originalBody, originalLang } = normalizeOriginal(text, original);
+
     const message = await this.prisma.channelMessage.create({
-      data: { channelId, authorId: userId, body: text, isAi: false },
+      data: {
+        channelId,
+        authorId: userId,
+        body: text,
+        isAi: false,
+        originalBody,
+        originalLang,
+      },
       include: { author: USER_SELECT },
     });
 

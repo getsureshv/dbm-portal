@@ -24,6 +24,19 @@ export class DmMessageDto {
   @ArrayMaxSize(10)
   @IsUUID('all', { each: true })
   attachmentIds?: string[];
+
+  // Translate-on-send: when the client translated the outgoing text, `body`
+  // holds the translation and these hold the pre-translation original.
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @MaxLength(5000)
+  originalBody?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  originalLang?: string;
 }
 
 // Used for editing an existing message — body remains required there.

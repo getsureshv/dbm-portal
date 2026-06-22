@@ -120,6 +120,7 @@ export class ChannelsController {
       req.userId,
       dto.body ?? '',
       dto.attachmentIds,
+      { originalBody: dto.originalBody, originalLang: dto.originalLang },
     );
   }
 

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { FileText, Users, BookOpen, Calendar, MapPin, Sparkles, Upload, ChevronRight, ChevronDown, Loader2, AlertCircle, Pencil, ScanLine, Eye, X, Check, Wand2, Trash2, UserPlus, Mail, Clock, Building2, Globe, Phone, MessageSquare, Send, Bot } from 'lucide-react';
 import { useAuth } from '../../../../lib/auth-context';
 import { projects as projectsApi, uploads as uploadsApi, documents as documentsApi, aiParticipant as aiApi, ApiProject, ApiDocument, ProjectGrant, ApiProjectNote, ApiProjectMessage } from '../../../../lib/api';
-import { useTranslator, TranslatorToolbar, MessageTranslation } from '../../../../lib/translator';
+import { useTranslator, TranslatorToolbar, MessageTranslation, SentMessageTranslation, translateOutgoing } from '../../../../lib/translator';
 import { useAttachments, AttachmentPickerButton, PendingAttachments, AttachmentDropZone, MessageAttachments, MicRecorderControl } from '../../../../lib/attachments';
 
 type TabType = 'overview' | 'documents' | 'scope' | 'chat' | 'team';
@@ -812,6 +812,7 @@ function ProjectChat({
   const [savingEdit, setSavingEdit] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [aiThinking, setAiThinking] = useState(false);
+  const [xlateNotice, setXlateNotice] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const messagesRef = useRef<ApiProjectMessage[]>([]);
@@ -941,12 +942,16 @@ function ProjectChat({
     if (attachments.uploading) return;
     setSending(true);
     setError(null);
+    setXlateNotice(false);
     const mentionsAi = /@(assistant|ai)\b/i.test(trimmed);
     try {
+      const xlate = await translateOutgoing(trimmed, translator);
+      if (xlate.failed) setXlateNotice(true);
       const created = await projectsApi.addMessage(
         projectId,
-        trimmed,
+        xlate.body,
         attachmentIds.length ? attachmentIds : undefined,
+        { originalBody: xlate.originalBody, originalLang: xlate.originalLang },
       );
       attachments.reset();
       setMessages((prev) =>
@@ -1131,7 +1136,14 @@ function ProjectChat({
                               : 'bg-gray-100 text-gray-800 rounded-tl-sm'
                         }`}
                       >
-                        {m.body}
+                        {isOwn && m.originalBody ? (
+                          <SentMessageTranslation
+                            body={m.body}
+                            originalBody={m.originalBody}
+                          />
+                        ) : (
+                          m.body
+                        )}
                       </div>
                     )
                   )}
@@ -1204,6 +1216,11 @@ function ProjectChat({
         className="border-t border-gray-100 px-6 py-4"
       >
         <PendingAttachments attachments={attachments} />
+        {xlateNotice && (
+          <p className="mb-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-1.5">
+            Couldn&apos;t translate — sent original.
+          </p>
+        )}
         <form onSubmit={send} className="flex items-end gap-3 min-w-0">
           {!recording && (
             <AttachmentPickerButton

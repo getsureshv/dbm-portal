@@ -406,6 +406,10 @@ model ProjectMessage {
   authorId  String?  @map("author_id") @db.Uuid
   isAi      Boolean  @default(false) @map("is_ai")
   body      String
+  // When this message was translated on send, `body` holds the displayed
+  // translation and these hold the pre-translation text/source language.
+  originalBody String? @map("original_body")
+  originalLang String? @map("original_lang")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -447,6 +451,10 @@ model DirectMessage {
   threadId  String   @map("thread_id") @db.Uuid
   senderId  String   @map("sender_id") @db.Uuid
   body      String
+  // When this message was translated on send, `body` holds the displayed
+  // translation and these hold the pre-translation text/source language.
+  originalBody String? @map("original_body")
+  originalLang String? @map("original_lang")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -501,6 +509,10 @@ model ChannelMessage {
   authorId  String?  @map("author_id") @db.Uuid
   isAi      Boolean  @default(false) @map("is_ai")
   body      String
+  // When this message was translated on send, `body` holds the displayed
+  // translation and these hold the pre-translation text/source language.
+  originalBody String? @map("original_body")
+  originalLang String? @map("original_lang")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

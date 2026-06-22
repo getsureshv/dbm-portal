@@ -15,6 +15,7 @@ import {
   type ScopeWhere,
 } from '../access/scope-filter.helper';
 import type { ScopeFilterDescriptor } from '../access/engine/permission-engine';
+import { normalizeOriginal } from '../../common/translate-on-send';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -516,6 +517,7 @@ export class ProjectsService {
     userId: string,
     body: string,
     attachmentIds?: string[],
+    original?: { originalBody?: string; originalLang?: string },
   ) {
     await this.getProject(projectId, userId, 'update');
 
@@ -527,8 +529,10 @@ export class ProjectsService {
       );
     }
 
+    const { originalBody, originalLang } = normalizeOriginal(text, original);
+
     const message = await this.prisma.projectMessage.create({
-      data: { projectId, authorId: userId, body: text },
+      data: { projectId, authorId: userId, body: text, originalBody, originalLang },
       include: {
         author: { select: { id: true, name: true, email: true } },
       },

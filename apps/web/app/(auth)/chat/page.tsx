@@ -48,6 +48,8 @@ import {
   useTranslator,
   TranslatorToolbar,
   MessageTranslation,
+  SentMessageTranslation,
+  translateOutgoing,
 } from '../../../lib/translator';
 import {
   useAttachments,
@@ -1269,6 +1271,7 @@ function ChannelView({
   const [draft, setDraft] = useState('');
   const [recording, setRecording] = useState(false);
   const [sending, setSending] = useState(false);
+  const [xlateNotice, setXlateNotice] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const translator = useTranslator(`channel:${channelId}`);
@@ -1391,12 +1394,16 @@ function ChannelView({
     if (attachments.uploading) return;
     setSending(true);
     setDraft('');
+    setXlateNotice(false);
     const mentionsAi = /@(assistant|ai)\b/i.test(body);
     try {
+      const xlate = await translateOutgoing(body, translator);
+      if (xlate.failed) setXlateNotice(true);
       const created = await channelsApi.addMessage(
         channelId,
-        body,
+        xlate.body,
         attachmentIds.length ? attachmentIds : undefined,
+        { originalBody: xlate.originalBody, originalLang: xlate.originalLang },
       );
       attachments.reset();
       setMessages((prev) =>
@@ -1502,7 +1509,14 @@ function ChannelView({
                             : 'bg-gray-100 text-gray-900 rounded-bl-sm'
                       }`}
                     >
-                      {m.body}
+                      {own && m.originalBody ? (
+                        <SentMessageTranslation
+                          body={m.body}
+                          originalBody={m.originalBody}
+                        />
+                      ) : (
+                        m.body
+                      )}
                     </div>
                   )}
                   <MessageAttachments attachments={m.attachments} />
@@ -1535,6 +1549,11 @@ function ChannelView({
         className="p-3 border-t border-gray-100"
       >
         <PendingAttachments attachments={attachments} />
+        {xlateNotice && (
+          <p className="mb-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
+            Couldn&apos;t translate \u2014 sent original.
+          </p>
+        )}
         <form onSubmit={send} className="flex items-end gap-2 min-w-0">
           {!recording && (
             <AttachmentPickerButton
@@ -1915,6 +1934,7 @@ function ThreadView({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [xlateNotice, setXlateNotice] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const translator = useTranslator(`dm:${threadId}`);
   const attachments = useAttachments();
@@ -2043,11 +2063,15 @@ function ThreadView({
     if (attachments.uploading) return;
     setSending(true);
     setDraft('');
+    setXlateNotice(false);
     try {
+      const xlate = await translateOutgoing(body, translator);
+      if (xlate.failed) setXlateNotice(true);
       const created = await dmApi.addMessage(
         threadId,
-        body,
+        xlate.body,
         attachmentIds.length ? attachmentIds : undefined,
+        { originalBody: xlate.originalBody, originalLang: xlate.originalLang },
       );
       attachments.reset();
       setMessages((prev) =>
@@ -2188,7 +2212,14 @@ function ThreadView({
                             : 'bg-gray-100 text-gray-900 rounded-bl-sm'
                         }`}
                       >
-                        {m.body}
+                        {own && m.originalBody ? (
+                          <SentMessageTranslation
+                            body={m.body}
+                            originalBody={m.originalBody}
+                          />
+                        ) : (
+                          m.body
+                        )}
                       </div>
                     )
                   )}
@@ -2263,6 +2294,11 @@ function ThreadView({
         className="p-3 border-t border-gray-100"
       >
         <PendingAttachments attachments={attachments} />
+        {xlateNotice && (
+          <p className="mb-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
+            Couldn&apos;t translate — sent original.
+          </p>
+        )}
         <form onSubmit={send} className="flex items-end gap-2 min-w-0">
           {!recording && (
             <AttachmentPickerButton
